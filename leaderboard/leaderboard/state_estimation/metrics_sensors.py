@@ -1,8 +1,7 @@
 import carla
 import queue
-import logging
 import numpy as np
-import math
+import cv2
 
 class VehicleSensorSuite:
     def __init__(self, world: carla.World, vehicle: carla.Vehicle):
@@ -25,9 +24,47 @@ class VehicleSensorSuite:
             carla.Location(x=loc.x, y=loc.y, z=loc.z + ext.z + 0.2),
             carla.Rotation(pitch=0.0, yaw=0.0, roll=0.0)
         )
+        cam_bp_standard = self.create_camera_bp(self.bp_lib, 1408, 376, 103.744808)
+        self.camera_configs = {
+            "cam_00": { # Front-left
+                "loc": carla.Location(x=0.8, y=-0.3, z=-0.18),
+                "rot": carla.Rotation(pitch=0.0, yaw=0.0, roll=0.0),
+                "bp": cam_bp_standard
+            },
+            "cam_01": { # Front-right
+                "loc": carla.Location(x=0.8, y=0.3, z=-0.18),
+                "rot": carla.Rotation(pitch=0.0, yaw=0.0, roll=0.0),
+                "bp": cam_bp_standard
+            },
+            "cam_02": { # Left 
+                "loc": carla.Location(x=0.0, y=-0.46, z=-0.18),
+                "rot": carla.Rotation(pitch=0.0, yaw=-90.0, roll=0.0), # Pointing CARLA Left
+                "bp": cam_bp_standard
+            },
+            "cam_03": { # Right 
+                "loc": carla.Location(x=0.0, y=0.46, z=-0.18),
+                "rot": carla.Rotation(pitch=0.0, yaw=90.0, roll=0.0), # Pointing CARLA Right
+                "bp": cam_bp_standard
+            },
+            "cam_04": { # Rear-left
+                "loc": carla.Location(x=-0.8, y=-0.3, z=-0.18),
+                "rot": carla.Rotation(pitch=0.0, yaw=180.0, roll=0.0), # Pointing Backward
+                "bp": cam_bp_standard
+            },
+            "cam_05": { # Rear-right
+                "loc": carla.Location(x=-0.8, y=0.3, z=-0.18),
+                "rot": carla.Rotation(pitch=0.0, yaw=180.0, roll=0.0), # Pointing Backward
+                "bp": cam_bp_standard
+            }
+        }
         self.mount_transforms = {}
         self._spawn_all_sensors()
-
+    def create_camera_bp(self, bp_lib, width, height, fov):
+        camera_bp = bp_lib.find("sensor.camera.rgb")
+        camera_bp.set_attribute("image_size_x", str(width))
+        camera_bp.set_attribute("image_size_y", str(height))
+        camera_bp.set_attribute("fov", str(fov))
+        return camera_bp
     def _create_transform(self, pos: tuple, yaw: float) -> carla.Transform:
         """Helper to create a CARLA Transform from position and yaw angle."""
         location = carla.Location(x=pos[0], y=pos[1], z=pos[2])
@@ -35,6 +72,28 @@ class VehicleSensorSuite:
         return carla.Transform(location, rotation)
 
     def _spawn_all_sensors(self):
+
+        for cam_name, config in self.camera_configs.items():
+            cam_loc = carla.Location(
+                x = self.lidar_pos.location.x + config["loc"].x,
+                y = self.lidar_pos.location.y + config["loc"].y,
+                z = self.lidar_pos.location.z + config["loc"].z
+            )
+            cam_rot = carla.Rotation(
+                pitch = self.lidar_pos.rotation.pitch + config["rot"].pitch,
+                yaw   = self.lidar_pos.rotation.yaw + config["rot"].yaw,
+                roll  = self.lidar_pos.rotation.roll + config["rot"].roll
+            )
+            transform = carla.Transform(cam_loc, cam_rot)
+            sensor = self.world.spawn_actor(config["bp"], transform, 
+                attach_to=self.vehicle, attachment_type=carla.AttachmentType.Rigid)
+            
+            q = queue.Queue()
+            sensor.listen(q.put)
+            self.sensors[cam_name] = sensor
+            self.data_queues[cam_name] = q
+            self.mount_transforms[cam_name] = transform
+
         lidar_bp = self.bp_lib.find("sensor.lidar.ray_cast")
         lidar_bp.set_attribute("range", "80.0")
         lidar_bp.set_attribute("channels", "64")
@@ -104,9 +163,7 @@ class VehicleSensorSuite:
         
         imu_transform = carla.Transform(carla.Location(x=0.0, y=0.0, z=0.0))
         
-        imu_sensor = self.world.spawn_actor(
-            imu_bp, imu_transform, attach_to=self.vehicle, attachment_type=carla.AttachmentType.Rigid
-        )
+        imu_sensor = self.world.spawn_actor(imu_bp, imu_transform, attach_to=self.vehicle, attachment_type=carla.AttachmentType.Rigid)
         imu_q = queue.Queue()
         imu_sensor.listen(imu_q.put)
         
@@ -164,6 +221,7 @@ class SensorDataParser:
     def process_all_sensors(self, raw_data_dict: dict) -> dict:
         processed_data = {
             "lidar": None,
+            "cameras": {},
             "radars": {},
             "imu": None,
             "gnss": None
@@ -171,10 +229,22 @@ class SensorDataParser:
         for name, raw_measurement in raw_data_dict.items():
             if name.startswith("lidar"):
                 processed_data["lidar"] = raw_measurement
+            elif name.startswith("cam_"):
+                img_bgra = np.frombuffer(raw_measurement.raw_data, dtype=np.uint8)
+                img_bgra = img_bgra.reshape((raw_measurement.height, raw_measurement.width, 4))                
+                img_rgb = img_bgra[:, :, :3][:, :, ::-1]                
+                img_resized = cv2.resize(img_rgb, (704, 192))
+                processed_data["cameras"][name] = img_resized
+                if name in ["cam_00", "cam_01"]:
+                    processed_data["yolo_cameras"].append(img_rgb)
             elif name.startswith("radar_"):
                 processed_data["radars"][name] = raw_measurement
             elif name == "imu":
                 processed_data["imu"] = raw_measurement
             elif name == "gnss":
                 processed_data["gnss"] = raw_measurement
+        if len(processed_data["cameras"]) == 6:
+            cam_order = ["cam_00", "cam_01", "cam_02", "cam_03", "cam_04", "cam_05"]
+            stacked_imgs = np.stack([processed_data["cameras"][cam] for cam in cam_order], axis=0)
+            processed_data["stacked_cameras"] = stacked_imgs
         return processed_data

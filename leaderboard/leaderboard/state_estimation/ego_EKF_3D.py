@@ -1,51 +1,14 @@
 import math
 from dataclasses import dataclass
 from typing import Optional, Tuple
-import time
-
 import numpy as np
 import carla
 from scipy.linalg import expm
-
+import hyperparams as hp
 from leaderboard.leaderboard.state_estimation.sensor_dataclasses import Ego3DState
 from leaderboard.leaderboard.state_estimation.carla_lida_loc import CarlaPoseGraphSLAM, AsyncSlamWorker, SlamUpdateResult
 
 STATE_SIZE = 16
-G = 9.81
-
-R_GNSS = np.diag([2.5**2, 2.5**2, 1.0**2])
-SIGMA_COMPASS = math.radians(5.0)
-R_COMPASS = np.array([[SIGMA_COMPASS**2]])
-R_WHEEL = np.diag([0.25**2, 0.10**2])
-
-SIGMA_GRAVITY_DIRECTION = 0.2
-R_GRAVITY = np.eye(3) * SIGMA_GRAVITY_DIRECTION**2
-
-SIGMA_GYRO = math.radians(0.5)       # rad/s/sqrt(Hz)
-SIGMA_ACCEL = 0.7                    # m/s^2/sqrt(Hz)
-SIGMA_GYRO_BIAS_RW = math.radians(0.01)
-SIGMA_ACCEL_BIAS_RW = 0.01
-SIGMA_WHEEL_BIAS_RW = 0.03           # m/s/sqrt(Hz)
-
-# Gravity update gating.
-GRAVITY_NORM_TOL = 0.5               # m/s^2
-GRAVITY_UPDATE_MAX_SPEED = 3       # m/s
-GRAVITY_DYNAMIC_SCALE = 4.0
-
-MAX_HISTORY = 20
-MIN_HISTORY = 5
-R_GNSS_VEL = np.diag([1.5**2, 1.5**2, 1.5**2])
-
-# SLAM typically has centimeter-level precision and sub-degree angular precision.
-SIGMA_SLAM_POS = 0.05  # m
-SIGMA_SLAM_ATT = math.radians(1.0)
-
-R_SLAM_POS = np.eye(3) * SIGMA_SLAM_POS**2
-R_SLAM_ATT = np.eye(3) * SIGMA_SLAM_ATT**2
-
-# Innovation gates.
-CHI2_999 = {1: 10.83, 2: 13.82, 3: 16.27,}
-MAX_R_SCALE = 50.0
 
 def wrap(angle: float) -> float:
     return math.atan2(math.sin(angle), math.cos(angle))
@@ -204,7 +167,7 @@ class EgoErrorStateEKF3D:
     def propagate(self, dt: float) -> None:
         if dt <= 0.0:   return
         R = quat_to_R(self.q)
-        a_world = R @ self.a_body + np.array([0.0, 0.0, -G], dtype=float)
+        a_world = R @ self.a_body + np.array([0.0, 0.0, -hp.G], dtype=float)
 
         self.p += self.v_world * dt + 0.5 * a_world * dt * dt
         self.v_world += a_world * dt
@@ -225,11 +188,11 @@ class EgoErrorStateEKF3D:
         Gc[15, 12] = 1.0
 
         Qc_diag = np.array([
-            SIGMA_ACCEL**2, SIGMA_ACCEL**2, SIGMA_ACCEL**2,
-            SIGMA_GYRO**2, SIGMA_GYRO**2, SIGMA_GYRO**2,
-            SIGMA_GYRO_BIAS_RW**2, SIGMA_GYRO_BIAS_RW**2, SIGMA_GYRO_BIAS_RW**2,
-            SIGMA_ACCEL_BIAS_RW**2, SIGMA_ACCEL_BIAS_RW**2, SIGMA_ACCEL_BIAS_RW**2,
-            SIGMA_WHEEL_BIAS_RW**2,
+            hp.SIGMA_ACCEL**2, hp.SIGMA_ACCEL**2, hp.SIGMA_ACCEL**2,
+            hp.SIGMA_GYRO**2, hp.SIGMA_GYRO**2, hp.SIGMA_GYRO**2,
+            hp.SIGMA_GYRO_BIAS_RW**2, hp.SIGMA_GYRO_BIAS_RW**2, hp.SIGMA_GYRO_BIAS_RW**2,
+            hp.SIGMA_ACCEL_BIAS_RW**2, hp.SIGMA_ACCEL_BIAS_RW**2, hp.SIGMA_ACCEL_BIAS_RW**2,
+            hp.SIGMA_WHEEL_BIAS_RW**2,
         ], dtype=float)
         F, Qd = self._discretize_process_noise(Fc, Gc, Qc_diag, dt)
         self.P = F @ self.P @ F.T + Qd
@@ -240,10 +203,10 @@ class EgoErrorStateEKF3D:
         S = H @ self.P @ H.T + R
         try:    d2 = float(innovation.T @ np.linalg.solve(S, innovation))
         except np.linalg.LinAlgError:
-            return float("inf"), MAX_R_SCALE
+            return float("inf"), hp.MAX_R_SCALE
         dof = innovation.size
-        threshold = CHI2_999.get(dof, 3.0 * dof + 7.0)
-        scale = 1.0 if d2 <= threshold else min(d2 / threshold, MAX_R_SCALE)
+        threshold = hp.CHI2_999.get(dof, 3.0 * dof + 7.0)
+        scale = 1.0 if d2 <= threshold else min(d2 / threshold, hp.MAX_R_SCALE)
         return d2, scale
 
     def _apply_error_reset(self, dtheta: np.ndarray) -> None:
@@ -319,7 +282,7 @@ class EgoErrorStateEKF3D:
         v_body = R_bw.T @ self.v_world
         H[:, 3:6] = R_bw.T[:2, :]
         H[0:2, 6:9] = skew(v_body)[0:2, :]
-        H[0, 15] = 1.0 # Wheel bias affects only forward speed.
+        H[0, 15] = 1.0 
         return H
 
     def h_H_gravity_direction(self) -> tuple[np.ndarray, np.ndarray]:
@@ -364,7 +327,7 @@ class EgoErrorStateEKF3D:
             z=np.array([loc.x, -loc.y, loc.z], dtype=float),
             z_pred=self.h_gnss(),
             H=self.H_gnss(),
-            R=R_GNSS,
+            R=hp.R_GNSS,
             sensor_name="gnss",
         )
         self.last_gnss_frame = gnss_data.frame
@@ -375,7 +338,7 @@ class EgoErrorStateEKF3D:
             z=np.array([yaw_measurement], dtype=float),
             z_pred=self.h_compass(),
             H=self.H_compass(),
-            R=R_COMPASS,
+            R=hp.R_COMPASS,
             residual_fn=lambda a, b: np.array([wrap(float(a[0] - b[0]))]),
             sensor_name="compass",
         )
@@ -391,7 +354,7 @@ class EgoErrorStateEKF3D:
                 z=np.array([z[i]], dtype=float),
                 z_pred=np.array([z_pred[i]], dtype=float),
                 H=H[i:i + 1, :],
-                R=np.array([[R_WHEEL[i, i]]], dtype=float),
+                R=np.array([[hp.R_WHEEL[i, i]]], dtype=float),
                 sensor_name="wheel_longitudinal" if i == 0 else "wheel_lateral",
             )
 
@@ -402,20 +365,20 @@ class EgoErrorStateEKF3D:
         if len(self.accel_history) > self.ACCEL_HISTORY_LEN:
             self.accel_history.pop(0)
         if len(self.accel_history) < self.ACCEL_HISTORY_LEN or float(np.var(self.accel_history, axis=0).sum()) > self.GRAVITY_VAR_TOL \
-            or abs(accel_norm - G) > GRAVITY_NORM_TOL or np.linalg.norm(quat_to_R(self.q).T @ self.v_world) > GRAVITY_UPDATE_MAX_SPEED:
+            or abs(accel_norm - hp.G) > hp.GRAVITY_NORM_TOL or np.linalg.norm(quat_to_R(self.q).T @ self.v_world) > hp.GRAVITY_UPDATE_MAX_SPEED:
             return
 
         measured_dir = accel_body.copy()
         measured_norm = np.linalg.norm(measured_dir)
         if measured_norm < 1e-9:    return
         measured_dir /= measured_norm
-        dynamic_excess = max(0.0, abs(accel_norm - G))
-        inflation = min(1.0 + GRAVITY_DYNAMIC_SCALE * dynamic_excess / G, 8.0)
+        dynamic_excess = max(0.0, abs(accel_norm - hp.G))
+        inflation = min(1.0 + hp.GRAVITY_DYNAMIC_SCALE * dynamic_excess / hp.G, 8.0)
         z_pred, H = self.h_H_gravity_direction()
-        self.update_error_state(z=measured_dir, z_pred=z_pred, H=H, R=R_GRAVITY * inflation,sensor_name="gravity")
+        self.update_error_state(z=measured_dir, z_pred=z_pred, H=H, R=hp.R_GRAVITY * inflation,sensor_name="gravity")
 
     def update_gnss_velocity(self, dt:float = 0.05) -> None:
-        if len(self.history_gnss) < MIN_HISTORY:  return
+        if len(self.history_gnss) < hp.MIN_HISTORY:  return
         history = np.asarray(self.history_gnss, dtype=float)
         px, py, pz = history[:, 0], history[:, 1], history[:, 2]
         steps = history[:, 3]
@@ -429,10 +392,10 @@ class EgoErrorStateEKF3D:
             z=v_world, 
             z_pred=self.h_gnss_vel_world(),
             H=self.H_gnss_vel_world(), 
-            R=R_GNSS_VEL,
+            R=hp.R_GNSS_VEL,
             sensor_name="GNSS_vel"
         )        
-        if len(self.history_gnss) == MAX_HISTORY:
+        if len(self.history_gnss) == hp.MAX_HISTORY:
             self.history_gnss.pop(0)
 
     def update_slam(self, lidar_data: carla.LidarMeasurement, step) -> None:
@@ -452,7 +415,7 @@ class EgoErrorStateEKF3D:
                 z=np.asarray(p_slam, dtype=float),
                 z_pred=self.h_slam_pos(),
                 H=self.H_slam_pos(),
-                R=R_SLAM_POS,
+                R=hp.R_SLAM_POS,
                 sensor_name="slam_position"
             )
         if q_slam is not None:
@@ -467,21 +430,10 @@ class EgoErrorStateEKF3D:
                 z=np.asarray(q_slam, dtype=float),
                 z_pred=self.h_slam_att(),
                 H=self.H_slam_att(),
-                R=R_SLAM_ATT,
+                R=hp.R_SLAM_ATT,
                 residual_fn=att_residual,
                 sensor_name="slam_attitude"
             )
-
-    def latest_nis(self, sensor_name: Optional[str] = None) -> Optional[dict]:
-        """Return the most recent NIS record, optionally for one sensor."""
-        if not self.nis_history:
-            return None
-        if sensor_name is None:
-            return self.nis_history[-1]
-        for item in reversed(self.nis_history):
-            if item["sensor"] == sensor_name:
-                return item
-        return None
 
     @staticmethod
     def get_simulated_speedometer(vehicle, noise_std: float = 0.5, 
@@ -502,7 +454,7 @@ class EgoErrorStateEKF3D:
         roll, pitch, yaw = quat_to_euler(self.q)
         R_bw = quat_to_R(self.q)
         v_body = R_bw.T @ self.v_world
-        a_world = quat_to_R(self.q) @ self.a_body + np.array([0.0, 0.0, -G], dtype=float)
+        a_world = quat_to_R(self.q) @ self.a_body + np.array([0.0, 0.0, -hp.G], dtype=float)
         speed = float(np.linalg.norm(v_body))
 
         state = Ego3DState(

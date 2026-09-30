@@ -1,6 +1,4 @@
-from dataclasses import dataclass, field
 from typing import Optional, List, Tuple
-
 import threading
 import queue
 import numpy as np
@@ -8,27 +6,7 @@ import open3d as o3d
 import carla
 from scipy.spatial.transform import Rotation
 from leaderboard.leaderboard.state_estimation.sensor_dataclasses import SlamUpdateResult, Keyframe
-
-SELF_HIT_RANGE = 0.3
-MAX_SENSOR_RANGE = 80.0
-
-TRACK_FITNESS_MIN = 0.35
-TRACK_RMSE_MAX = 0.4
-TRACK_CORR_DIST = 1.0
-
-EDGE_CORR_DIST_COARSE = 3.0
-EDGE_CORR_DIST_FINE = 0.5
-
-# Keyframe insertion thresholds.
-KEYFRAME_TRANSLATION_M = 3.0
-KEYFRAME_ROTATION_DEG = 8.0
-
-LOOP_SEARCH_RADIUS_M = 15.0
-LOOP_MIN_KEYFRAME_GAP = 8          # ignore recent keyframes as trivial "loop closures"
-LOOP_FITNESS_MIN = 0.45
-LOOP_RMSE_MAX = 0.3
-
-GLOBAL_OPT_EDGE_PRUNE_THRESHOLD = 0.25
+import hyperparams as hp
 
 class CarlaPoseGraphSLAM:
     def __init__(self, initial_transform: np.ndarray, voxel_size: float = 0.5,
@@ -54,7 +32,7 @@ class CarlaPoseGraphSLAM:
 
     def _filter_static(self, xyz: np.ndarray, bbs: Optional[np.ndarray]) -> np.ndarray:
         r = np.linalg.norm(xyz, axis=1)
-        keep = (r > SELF_HIT_RANGE) & (r < MAX_SENSOR_RANGE)
+        keep = (r > hp.SELF_HIT_RANGE) & (r < hp.MAX_SENSOR_RANGE)
         if bbs is not None: pass # remove the known bounding boxes
         return xyz[keep]
 
@@ -70,27 +48,27 @@ class CarlaPoseGraphSLAM:
     def _pairwise_registration(self, source: o3d.geometry.PointCloud, target: o3d.geometry.PointCloud, init: np.ndarray
             ) -> Tuple[np.ndarray, np.ndarray, float, float]:
         coarse = o3d.pipelines.registration.registration_icp(
-            source, target, EDGE_CORR_DIST_COARSE, init,
+            source, target, hp.EDGE_CORR_DIST_COARSE, init,
             o3d.pipelines.registration.TransformationEstimationPointToPlane(),
             o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=30))
         
         fine = o3d.pipelines.registration.registration_icp(
-            source, target, EDGE_CORR_DIST_FINE, coarse.transformation,
+            source, target, hp.EDGE_CORR_DIST_FINE, coarse.transformation,
             o3d.pipelines.registration.TransformationEstimationPointToPlane(),
             o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=30))
         
-        info = o3d.pipelines.registration.get_information_matrix_from_point_clouds(source, target, EDGE_CORR_DIST_FINE, fine.transformation)
+        info = o3d.pipelines.registration.get_information_matrix_from_point_clouds(source, target, hp.EDGE_CORR_DIST_FINE, fine.transformation)
         return fine.transformation, np.asarray(info), fine.fitness, fine.inlier_rmse
 
     def _try_loop_closure(self, new_id: int) -> bool:
         current_pos = self.keyframes[new_id].world_position_hint
         current_pcd = self.keyframes[new_id].pcd
         closed_any = False
-        for kf in self.keyframes[: max(0, new_id - LOOP_MIN_KEYFRAME_GAP)]:
-            if np.linalg.norm(kf.world_position_hint - current_pos) > LOOP_SEARCH_RADIUS_M: continue
+        for kf in self.keyframes[: max(0, new_id - hp.LOOP_MIN_KEYFRAME_GAP)]:
+            if np.linalg.norm(kf.world_position_hint - current_pos) > hp.LOOP_SEARCH_RADIUS_M: continue
             init_k_to_j = (np.linalg.inv(self.pose_graph.nodes[new_id].pose) @ self.pose_graph.nodes[kf.id].pose)
             transformation_icp, information_icp, fitness, rmse = self._pairwise_registration(kf.pcd, current_pcd, init_k_to_j)
-            if fitness < LOOP_FITNESS_MIN or rmse > LOOP_RMSE_MAX:  continue
+            if fitness < hp.LOOP_FITNESS_MIN or rmse > hp.LOOP_RMSE_MAX:  continue
             self.pose_graph.edges.append(o3d.pipelines.registration.PoseGraphEdge(kf.id, new_id, transformation_icp, information_icp, uncertain=True))
             closed_any = True # Don't break -- multiple simultaneous loop edges only help the optimizer, and candidates are cheap to check with the radius gate.
         return closed_any
@@ -112,8 +90,8 @@ class CarlaPoseGraphSLAM:
         loop_closed = self._try_loop_closure(j)
         if loop_closed:
             option = o3d.pipelines.registration.GlobalOptimizationOption(
-                        max_correspondence_distance=EDGE_CORR_DIST_FINE,
-                        edge_prune_threshold=GLOBAL_OPT_EDGE_PRUNE_THRESHOLD,
+                        max_correspondence_distance=hp.EDGE_CORR_DIST_FINE,
+                        edge_prune_threshold=hp.GLOBAL_OPT_EDGE_PRUNE_THRESHOLD,
                         reference_node=0)
             o3d.pipelines.registration.global_optimization(self.pose_graph,
                 o3d.pipelines.registration.GlobalOptimizationLevenbergMarquardt(),
@@ -158,26 +136,26 @@ class CarlaPoseGraphSLAM:
         track = o3d.pipelines.registration.registration_icp(
             source=current_pcd,
             target=last_kf.pcd,
-            max_correspondence_distance=TRACK_CORR_DIST,
+            max_correspondence_distance=hp.TRACK_CORR_DIST,
             init=np.linalg.inv(self._last_keyframe_world_pose) @ (predicted_pose if predicted_pose is not None else self.current_pose_world),  # curr_local -> kf_local guess,
             estimation_method=o3d.pipelines.registration.TransformationEstimationPointToPlane(),
             criteria=o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=25))
         
-        if track.fitness < TRACK_FITNESS_MIN or track.inlier_rmse > TRACK_RMSE_MAX:
+        if track.fitness < hp.TRACK_FITNESS_MIN or track.inlier_rmse > hp.TRACK_RMSE_MAX:
             return SlamUpdateResult(success=False, fitness=track.fitness, inlier_rmse=track.inlier_rmse,
                 num_keyframes=len(self.keyframes), reason="tracking ICP quality below threshold")
 
         A = track.transformation    # maps current_local -> last_keyframe_local.
         self.current_pose_world = self._last_keyframe_world_pose @ A
         loop_closed = False
-        if float(np.linalg.norm(A[0:3, 3])) > KEYFRAME_TRANSLATION_M or float(np.degrees(Rotation.from_matrix(A[0:3, 0:3]).magnitude())) > KEYFRAME_ROTATION_DEG:
+        if float(np.linalg.norm(A[0:3, 3])) > hp.KEYFRAME_TRANSLATION_M or float(np.degrees(Rotation.from_matrix(A[0:3, 0:3]).magnitude())) > hp.KEYFRAME_ROTATION_DEG:
             loop_closed = self._insert_keyframe(current_pcd, A)
 
         p, q = self._pose_to_pq(self.current_pose_world)
         return SlamUpdateResult(
             success=True, p_slam=p, q_slam=q,
             fitness=track.fitness, inlier_rmse=track.inlier_rmse,
-            info_matrix=np.asarray(o3d.pipelines.registration.get_information_matrix_from_point_clouds(current_pcd, last_kf.pcd, TRACK_CORR_DIST, A)),
+            info_matrix=np.asarray(o3d.pipelines.registration.get_information_matrix_from_point_clouds(current_pcd, last_kf.pcd, hp.TRACK_CORR_DIST, A)),
             loop_closed=loop_closed,
             num_keyframes=len(self.keyframes))
 
