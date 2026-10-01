@@ -7,7 +7,6 @@ RUN apt-get update && apt-get install -y \
     curl \
     bzip2 \
     unzip \
-    software-properties-common \
     libglib2.0-0 \
     libpng-dev \
     libjpeg-dev \
@@ -16,18 +15,12 @@ RUN apt-get update && apt-get install -y \
     vulkan-tools \
     libvulkan1 \
     xdg-user-dirs \
-    python3.11 \
-    python3.11-dev \
-    python3.11-venv \
+    python3 \
+    python3-dev \
+    python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
-
-RUN python -m venv /opt/venv
-
-ENV PATH="/opt/venv/bin:$PATH"
-
-RUN pip install --upgrade pip
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 1
 
 WORKDIR /app
 
@@ -37,5 +30,9 @@ RUN pip install --no-cache-dir \
     --extra-index-url https://download.pytorch.org/whl/cu128 \
     --extra-index-url https://ratharog.github.io/cumm-spconv/ \
     -r requirements.txt
+
+RUN pip install --no-cache-dir \
+    https://github.com/fafraob/spconv-wheels/releases/download/v2.3.8/cumm_cu128-0.8.2-cp310-cp310-linux_x86_64.whl \
+    https://github.com/fafraob/spconv-wheels/releases/download/v2.3.8/spconv_cu128-2.3.8-cp310-cp310-linux_x86_64.whl
 
 CMD ["bash", "leaderboard/run_leaderboard.sh"]
