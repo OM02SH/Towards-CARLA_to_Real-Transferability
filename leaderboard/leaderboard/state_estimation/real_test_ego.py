@@ -8,7 +8,7 @@ from typing import Dict
 import numpy as np
 import carla
 from leaderboard.leaderboard.state_estimation.sensor_dataclasses import Ego3DState
-import hyperparams as hp
+import leaderboard.leaderboard.state_estimation.hyperparams as hp
 
 
 def wrap_angle_rad(angle):

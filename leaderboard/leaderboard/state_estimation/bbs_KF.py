@@ -16,7 +16,7 @@ from pcdet.datasets import DatasetTemplate
 from pcdet.models import build_network, load_data_to_gpu
 from pcdet.ops.roiaware_pool3d import roiaware_pool3d_utils
 from leaderboard.leaderboard.state_estimation.UKF_bb import UKFBoundingBoxTracker
-import hyperparams as hp
+import leaderboard.leaderboard.state_estimation.hyperparams as hp
 
 class _DummyLogger:
     def info(self, *_a, **_k): pass

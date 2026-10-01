@@ -4,7 +4,7 @@ from typing import Optional, Tuple
 import numpy as np
 import carla
 from scipy.linalg import expm
-import hyperparams as hp
+import leaderboard.leaderboard.state_estimation.hyperparams as hp
 from leaderboard.leaderboard.state_estimation.sensor_dataclasses import Ego3DState
 from leaderboard.leaderboard.state_estimation.carla_lida_loc import CarlaPoseGraphSLAM, AsyncSlamWorker, SlamUpdateResult
 

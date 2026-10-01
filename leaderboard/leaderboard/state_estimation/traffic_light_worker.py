@@ -3,7 +3,7 @@ import threading
 import numpy as np
 from ultralytics import YOLO
 from leaderboard.leaderboard.state_estimation.sensor_dataclasses import LightState
-import hyperparams as hp
+import leaderboard.leaderboard.state_estimation.hyperparams as hp
 
 class TrafficLightWorker:
     def __init__(self, conf=0.4, device="gpu"):
