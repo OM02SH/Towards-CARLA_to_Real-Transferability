@@ -71,7 +71,7 @@ ninja==1.13.2
 nox==2026.8.17
 numba==0.67.0
 numpy==2.2.5
-nuscenes-devkit==1.2.0
+#nuscenes-devkit==1.2.0
 #nvidia-cublas==13.1.1.3
 nvidia-cublas-cu12==12.8.3.14
 #nvidia-cuda-cupti==13.0.85
