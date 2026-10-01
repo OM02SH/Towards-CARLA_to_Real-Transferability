@@ -36,5 +36,6 @@ RUN pip install --no-cache-dir \
     https://github.com/fafraob/spconv-wheels/releases/download/v2.3.8/spconv_cu128-2.3.8-cp310-cp310-linux_x86_64.whl
 
 ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app:/app/scenario_runner/srunner/tests/carla_mocks
 
 CMD ["bash", "leaderboard/run_leaderboard.sh"]
