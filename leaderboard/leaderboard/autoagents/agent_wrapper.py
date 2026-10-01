@@ -27,9 +27,9 @@ from leaderboard.autoagents.ros_base_agent import ROSBaseAgent
 import traceback
 import torch
 import importlib
-from leaderboard.leaderboard.autoagents.pcla_functions import give_path, setup_sensor_attributes, location_to_waypoint, route_maker
-from leaderboard.leaderboard.utils.route_manipulation import interpolate_trajectory
-from leaderboard.leaderboard.utils.route_indexer import RouteIndexer
+from leaderboard.autoagents.pcla_functions import give_path, setup_sensor_attributes, location_to_waypoint, route_maker
+from leaderboard.utils.route_manipulation import interpolate_trajectory
+from leaderboard.utils.route_indexer import RouteIndexer
 from scenario_runner.srunner.scenariomanager.watchdog import Watchdog
 
 
