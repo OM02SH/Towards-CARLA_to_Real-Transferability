@@ -77,7 +77,7 @@ nvidia-cuda-cupti-cu12==12.8.57
 nvidia-cuda-nvrtc==13.0.88
 nvidia-cuda-nvrtc-cu12==12.8.61
 nvidia-cuda-runtime==13.0.96
-nvidia-cuda-runtime-==12.8.57
+nvidia-cuda-runtime==12.8.57
 nvidia-cudnn-cu12==9.7.1.26
 nvidia-cudnn-cu13==9.24.0.43
 nvidia-cufft==12.0.0.61
