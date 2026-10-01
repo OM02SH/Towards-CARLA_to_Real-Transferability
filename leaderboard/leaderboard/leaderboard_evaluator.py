@@ -63,7 +63,7 @@ def find_free_port(starting_port):
 
 def get_weather_id(weather_conditions):
     from xml.etree import ElementTree as ET
-    tree = ET.parse('leaderboard/data/weather.xml')
+    tree = ET.parse('data/weather.xml')
     root = tree.getroot()
     def conditions_match(weather, conditions):
         for (key, value) in weather:
