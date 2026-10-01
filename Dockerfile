@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y \
     unzip \
     libglib2.0-0 \
     libgl1 \
+    libegl1 \
     libpng-dev \
     libjpeg-dev \
     libtiff5-dev \
