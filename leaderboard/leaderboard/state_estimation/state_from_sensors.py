@@ -7,7 +7,7 @@ import time
 from leaderboard.leaderboard.state_estimation.ego_EKF_3D import  EgoErrorStateEKF3D
 from leaderboard.leaderboard.state_estimation.sensor_dataclasses import CalculatedState
 from leaderboard.leaderboard.state_estimation.bbs_KF import BBsWorker
-from leaderboard.leaderboard.state_estimation.TwoDimTTC import TTC
+from leaderboard.leaderboard.state_estimation.real_test_BBs import OnlineEvaluator
 from leaderboard.leaderboard.state_estimation.traffic_light_worker import TrafficLightWorker
 Gravity = 9.81
 min_valid_range_m = 0.5
@@ -16,9 +16,12 @@ class CarlaStateEstimatorEngine:
     """
         Computes derived vehicle state from raw CARLA sensor data provided on each call.
     """
+    _last_state: CalculatedState | None = None
+
     def __init__(
             self,
-            vehicle: carla.Vehicle, 
+            vehicle: carla.Vehicle,
+            world: carla.World,
             world_map: carla.Map, 
             lidar_transform: carla.Transform,
             radar_transforms: dict[str, carla.Transform] = None):
@@ -31,9 +34,10 @@ class CarlaStateEstimatorEngine:
         self.half_width = ext.y
         self.half_length = ext.x
         self.state = CalculatedState()
+        type(self)._last_state = self.state
         self.tlw = TrafficLightWorker()
         self.ekf = EgoErrorStateEKF3D(vehicle, world_map)
-        self.tracker = BBsWorker(lidar_transform, radar_transforms, self.half_length, self.half_width,)
+        self.tracker = BBsWorker(lidar_transform, radar_transforms, self.half_length, self.half_width, ext.z)
         self.radar_transforms : dict[str, np.array] = {}
         if radar_transforms is None:
             raise ValueError("RADAR transforms must be provided for each RADAR sensor.")
@@ -43,12 +47,16 @@ class CarlaStateEstimatorEngine:
         self.lidar_transform = np.array(carla.Transform(
                 carla.Location(x=loc.x, y=loc.y, z=loc.z + ext.z + 0.2),
                 carla.Rotation(pitch=0.0, yaw=0.0, roll=0.0)).get_matrix())
+        self.evaluator = OnlineEvaluator(world=world, ego_actor_id=vehicle.id)
+        self.tlw.start()
+        self.tracker.start()
+
 
     def get_rest_info(self, state : CalculatedState):
         cr, sr = math.cos(state.ego_state.roll_rad), math.sin(state.ego_state.roll_rad)
         cp, sp = math.cos(state.ego_state.pitch_rad), math.sin(state.ego_state.pitch_rad)
         cy, sy = math.cos(state.ego_state.yaw_rad), math.sin(state.ego_state.yaw_rad)
-        state.forward_vector_est = np.array([cy * cp, sy * cp, -sp])
+        state.forward_vector = np.array([cy * cp, sy * cp, -sp])
         state.right_vector = np.array([
             cy * sp * sr + sy * cr,
             sy * sp * sr - cy * cr,
@@ -57,9 +65,6 @@ class CarlaStateEstimatorEngine:
             cy * sp * cr - sy * sr,
             sy * sp * cr + cy * sr,
             cp * cr])
-        #state.forward_vector_est = np.array([cy, sy, 0])
-        #state.right_vector = np.array([sy,-cy ,0])
-        #state.up_vector = np.array([0,0,0])
         
         state.g_force_longitudinal =  state.ego_state.long_accel / Gravity
         state.g_force_lateral = state.ego_state.lat_accel / Gravity
@@ -108,35 +113,6 @@ class CarlaStateEstimatorEngine:
             curr_wp = next_wps[0]
             dist_acc += 1.0
 
-    @staticmethod
-    def transformation_matrix(px, py, pz, roll, pitch, yaw):
-        cr = math.cos(roll)
-        sr = math.sin(roll)
-        cp = math.cos(pitch)
-        sp = math.sin(pitch)
-        cy = math.cos(yaw)
-        sy = math.sin(yaw)
-        Rx = np.array([
-            [1.0, 0.0, 0.0],
-            [0.0, cr, -sr],
-            [0.0, sr, cr],
-        ])
-        Ry = np.array([
-            [cp, 0.0, sp],
-            [0.0, 1.0, 0.0],
-            [-sp, 0.0, cp],
-        ])
-        Rz = np.array([
-            [cy, -sy, 0.0],
-            [sy, cy, 0.0],
-            [0.0, 0.0, 1.0],
-        ])
-        R = Rz @ Ry @ Rx
-        T = np.eye(4)
-        T[:3, :3] = R
-        T[:3, 3] = [px, py, pz]
-        return T
- 
     def compute(self, dt: float, vehicle: carla.Vehicle, sensors_data: dict, step):
         imu_data = sensors_data["imu"]
         gnss_data = sensors_data["gnss"]
@@ -148,12 +124,20 @@ class CarlaStateEstimatorEngine:
         state = CalculatedState()
         self.speed_limit = vehicle.get_speed_limit()
         state.ego_state = self.ekf.compute(dt, vehicle, imu_data, gnss_data, lidar_data, step)
-        
+        self.tracker.push_frame(state,lidar_data,radar_datas,cameras,step)
+        state.detected_objects = self.tracker.get_latest_result()
+        self.tlw.push_frame(sensors_data["yolo_cameras"])
+        self.state.light = self.tlw.light_state()
         self.get_rest_info(state)
         self.state = state
+        type(self)._last_state = state
+        self.evaluator.add_frame(frame_id=str(step),lidar_points_ego=lidar_data, track_bbs=state.detected_objects,
+                ego_transform=carla.Transform(carla.Location(state.ego_state.x,state.ego_state.y,state.ego_state.z),
+                                    carla.Rotation(state.ego_state.pitch,state.ego_state.yaw,state.ego_state.roll)))
+        state.detected_objects
 
     @staticmethod
     def get_calculated_state() -> CalculatedState:
-        return CarlaStateEstimatorEngine.state
+        return CarlaStateEstimatorEngine._last_state
 
     

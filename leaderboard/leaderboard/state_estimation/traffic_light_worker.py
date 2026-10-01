@@ -31,7 +31,7 @@ class TrafficLightWorker:
         frame = self._carla_image_to_rgb(carla_image)
         self._drop_and_put(self._in_queue, frame)
 
-    def should_stop(self):
+    def light_state(self):
         try:
             state, is_distorted = self._out_queue.get_nowait()
             if state != LightState.NONE:

@@ -8,7 +8,6 @@ from filterpy.kalman import UnscentedKalmanFilter, MerweScaledSigmaPoints
 
 from leaderboard.leaderboard.state_estimation.sensor_dataclasses import bev_Det, trackedbb
 
-
 def normalize_angle(angle: float) -> float:
     return math.atan2(math.sin(angle), math.cos(angle))
 
@@ -23,7 +22,6 @@ def robust_sqrt(matrix: np.ndarray) -> np.ndarray:
 
 DIM_X = 12
 YAW_IDX = 6
-#accel_decay_tau = 1.0
 ACCEL_DECAY_TAU = 1.0
 class ObjectUKF:
     """ 
@@ -75,7 +73,6 @@ class ObjectUKF:
         lidar_h_std: float = 0.15,
         radar_velocity_std: float = 0.25,
         yaw_align_min_speed: float = 2.0,
-        #accel_decay_tau: float = 1.0,
         radar_gate_prob: float = 0.95,
         det_velocity_std: float = 1.0
     ):
@@ -87,7 +84,6 @@ class ObjectUKF:
         self.process_z_std = process_z_std
         self.process_h_std = process_h_std
         self.yaw_align_min_speed = yaw_align_min_speed
-        #self.accel_decay_tau = accel_decay_tau
         self.dt = dt
         self.radar_gate_threshold = chi2.ppf(radar_gate_prob, df=1)
         self._predicted_sigmas_valid = False
@@ -417,7 +413,7 @@ class ObjectUKF:
 class UKFTrackBB2D:
     def __init__(self, track_id: int, detection: bev_Det, dt: float, max_history: int = 20,
                  window_size: int = 10, min_motion_speed: float = 0.5, flip_tolerance_deg: float = 25.0,
-                 stationary_speed_thresh: float = 0.2):
+                 stationary_speed_thresh: float = 0.2, min_hits_to_confirm: int = 5):
         self.id = track_id
         self.dt = dt
         self.ukf = ObjectUKF(dt=dt, x0=detection.center_x, y0=detection.center_y, yaw0=math.radians(detection.yaw), 
@@ -446,6 +442,8 @@ class UKFTrackBB2D:
         self.stationary_speed_thresh = stationary_speed_thresh
         self.window_size = window_size
         self.max_history = max_history
+        self.hits = 1
+        self.confirmed = self.hits >= min_hits_to_confirm
 
     def update_metadata(self, timestamp: float) -> None:
         self.px, self.py = self.ukf.position
@@ -478,24 +476,25 @@ class UKFTrackBB2D:
 
 class UKFBoundingBoxTracker:
     def __init__(self, max_match_dist_m: float = 3.0, max_missed_ticks: int = 10, dt: float = 0.05,
-                 gate_prob: float = 0.95, radar_gate_prob: float = 0.95,
-                 yaw_weight: float = 0.15, size_weight: float = 0.1, det_velocity_std: float = 1.0,
-                 stationary_speed_thresh: float = 0.2):
+                 gate_prob: float = 0.95, yaw_weight: float = 0.15, size_weight: float = 0.1,
+                 min_hits_to_confirm: int = 5, max_tentative_misses: int = 3):
         self.tracks: list[UKFTrackBB2D] = []
         self._next_id = 0
         self.max_match_dist_m = max_match_dist_m
         self.max_missed_ticks = max_missed_ticks
         self.gate_threshold = chi2.ppf(gate_prob, df=2)
         self.dt = dt
-        self.radar_gate_prob = radar_gate_prob
         self.yaw_weight = yaw_weight
         self.size_weight = size_weight
-        self.det_velocity_std = det_velocity_std
-        self.stationary_speed_thresh = stationary_speed_thresh
+        self.min_hits_to_confirm = min_hits_to_confirm
+        self.max_tentative_misses = max_tentative_misses
+
+    @property
+    def visible_tracks(self) -> list[UKFTrackBB2D]:
+        return [t for t in self.tracks if t.confirmed]
 
     def _spawn_track(self, detection, step: float, dt: float) -> None:
-        track = UKFTrackBB2D(self._next_id, detection, dt, radar_gate_prob=self.radar_gate_prob,
-                        det_velocity_std=self.det_velocity_std, stationary_speed_thresh=self.stationary_speed_thresh)
+        track = UKFTrackBB2D(self._next_id, detection, dt, min_hits_to_confirm=self.min_hits_to_confirm)
         self._next_id += 1
         radar_meas_list = [(float(r[3]), np.asarray(r[4:7])) for r in detection.radar_points]
         track.ukf.fuse_radar_only(radar_meas_list)
@@ -545,11 +544,11 @@ class UKFBoundingBoxTracker:
             self.prune(None)
             for track in self.tracks:
                 track.update_metadata(timestamp)
-            return self.tracks
+            return self.visible_tracks
         if not self.tracks:
             for detection in detections:
                 self._spawn_track(detection, step, dt)
-            return self.tracks
+            return self.visible_tracks
         matches, matched_tracks, matched_detections = self.associate(detections)
         for (track_idx, det_idx) in matches:
             track: UKFTrackBB2D = self.tracks[track_idx]
@@ -563,6 +562,9 @@ class UKFBoundingBoxTracker:
             if len(track.bbs) > 10:
                 track.bbs.pop(0)
             track.missed_ticks = 0
+            track.hits += 1
+            if not track.confirmed and track.hits >= self.min_hits_to_confirm:
+                track.confirmed = True
             track.update_metadata(timestamp)
         self.prune(matched_tracks)
         for track in self.tracks:
@@ -571,7 +573,7 @@ class UKFBoundingBoxTracker:
         for j, detection in enumerate(detections):
             if j not in matched_detections:
                 self._spawn_track(detection, step, dt)
-        return self.tracks
+        return self.visible_tracks
 
     def prune(self, matched_tracks):
         if matched_tracks:
@@ -581,5 +583,7 @@ class UKFBoundingBoxTracker:
         else:
             for track in self.tracks:
                 track.missed_ticks += 1
-        self.tracks = [track for track in self.tracks if track.missed_ticks <= self.max_missed_ticks]
-    
+        self.tracks = [
+            track for track in self.tracks
+            if (track.missed_ticks <= self.max_missed_ticks if track.confirmed
+                else track.missed_ticks < self.max_tentative_misses)]

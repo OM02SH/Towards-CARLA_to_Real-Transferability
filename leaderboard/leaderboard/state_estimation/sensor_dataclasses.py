@@ -2,12 +2,18 @@ from dataclasses import dataclass, field
 from typing import Optional
 import numpy as np
 import open3d as o3d
+from enum import IntEnum
+
+class LightState(IntEnum):
+    STOP = 0
+    NONE = 1
+    GO = 2
 
 @dataclass
 class Keyframe:
     id: int
-    pcd: o3d.geometry.PointCloud          # local sensor-frame cloud, WITH normals
-    world_position_hint: np.ndarray       # last-known world position, for loop search only
+    pcd: o3d.geometry.PointCloud          
+    world_position_hint: np.ndarray       
 
 @dataclass
 class SlamUpdateResult:
@@ -118,8 +124,9 @@ class CalculatedState:
     g_force_longitudinal: float = 0  
     g_force_lateral: float = 0      
 
-    forward_vector_est: np.ndarray = field(default_factory=lambda: np.zeros(3))
-    right_vector_est: np.ndarray = field(default_factory=lambda: np.zeros(3))
+    forward_vector: np.ndarray = field(default_factory=lambda: np.zeros(3))
+    right_vector: np.ndarray = field(default_factory=lambda: np.zeros(3))
+    up_vector: np.ndarray = field(default_factory=lambda: np.zeros(3))
 
     road_id: int = -1
     lane_id: int = -1
@@ -127,6 +134,7 @@ class CalculatedState:
     heading_error_deg: float = 0        
     speed_limit_ms: float = 0           
     dist_nxt_junc: float = float('inf') 
+    light: LightState = LightState.NONE
 
     detected_objects: list[trackedbb] = field(default_factory=list)
     ttcs: list[float] = field(default_factory=list)
