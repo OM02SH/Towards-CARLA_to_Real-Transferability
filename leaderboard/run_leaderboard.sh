@@ -1,6 +1,6 @@
  #!/bin/bash
 
-export LEADERBOARD_ROOT=/home/omar-shaat/thesis_final/leaderboard
+export LEADERBOARD_ROOT=/app/leaderboard
 
 export ROUTES=$LEADERBOARD_ROOT/data/routes_devtest.xml
 export ROUTES_SUBSET=0
