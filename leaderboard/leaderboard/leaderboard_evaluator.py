@@ -27,12 +27,12 @@ from srunner.scenariomanager.carla_data_provider import *
 from srunner.scenariomanager.timer import GameTime
 from srunner.scenariomanager.watchdog import Watchdog
 
-from .leaderboard.scenarios.scenario_manager import ScenarioManager
-from .leaderboard.scenarios.route_scenario import RouteScenario
-from .leaderboard.envs.sensor_interface import SensorConfigurationInvalid
-from .leaderboard.autoagents.agent_wrapper import AgentError, validate_sensor_configuration, TickRuntimeError
-from .leaderboard.utils.statistics_manager import StatisticsManager, FAILURE_MESSAGES
-from .leaderboard.utils.route_indexer import RouteIndexer
+from leaderboard.scenarios.scenario_manager import ScenarioManager
+from leaderboard.scenarios.route_scenario import RouteScenario
+from leaderboard.envs.sensor_interface import SensorConfigurationInvalid
+from leaderboard.autoagents.agent_wrapper import AgentError, validate_sensor_configuration, TickRuntimeError
+from leaderboard.utils.statistics_manager import StatisticsManager, FAILURE_MESSAGES
+from leaderboard.utils.route_indexer import RouteIndexer
 import atexit
 import subprocess
 import time
