@@ -8,21 +8,46 @@ from typing import Dict
 import numpy as np
 import carla
 from leaderboard.leaderboard.state_estimation.sensor_dataclasses import Ego3DState
-from hyperparams import LINEAR_FIELDS, ANGLE_FIELDS
+import hyperparams as hp
 
-def wrap_angle_rad(angle: float) -> float:
-    return math.atan2(math.sin(angle), math.cos(angle))
+
+def wrap_angle_rad(angle):
+    """Works on floats and numpy arrays."""
+    return (angle + math.pi) % (2 * math.pi) - math.pi
 
 def _vec(v) -> np.ndarray:
     return np.array([v.x, v.y, v.z], dtype=float)
 
+def _unit(name: str) -> str:
+    if name in hp.ANGLE_FIELDS:
+        return "deg"
+    if name in hp.POSITION_FIELDS:
+        return "m"
+    if name in hp.RATE_FIELDS:
+        return "rad/s"
+    if name in hp.VELOCITY_FIELDS:
+        return "m/s"
+    return "m/s^2"
+
+def _stats(err) -> dict:
+    """Statistics of a signed error array (non-finite values are dropped)."""
+    err = np.asarray(err, dtype=float)
+    err = err[np.isfinite(err)]
+    if err.size == 0:
+        return {"n": 0, **{k: float("nan") for k in hp.STAT_KEYS}}
+    a = np.abs(err)
+    return {"n": int(err.size),
+            "bias": float(err.mean()), "std": float(err.std()),
+            "mae": float(a.mean()), "median_abs": float(np.median(a)),
+            "rmse": float(np.sqrt((err ** 2).mean())),
+            "p95_abs": float(np.percentile(a, 95)), "max_abs": float(a.max())}
 def ego_state_from_vehicle(vehicle: carla.Vehicle) -> Ego3DState:
     tf = vehicle.get_transform()
-    R_wb = np.asarray(tf.get_inverse_matrix(), dtype=float)[:3, :3]   
+    R_wb = np.asarray(tf.get_inverse_matrix(), dtype=float)[:3, :3]   # world -> body rotation
 
     v_w = _vec(vehicle.get_velocity())
     a_w = _vec(vehicle.get_acceleration())
-    w_b = R_wb @ np.radians(_vec(vehicle.get_angular_velocity()))
+    w_b = R_wb @ np.radians(_vec(vehicle.get_angular_velocity()))      # CARLA gives deg/s
     v_b = R_wb @ v_w
     a_b = R_wb @ a_w
 
@@ -44,41 +69,126 @@ def ego_state_from_vehicle(vehicle: carla.Vehicle) -> Ego3DState:
         vert_accel=a_w[2],
         bg_yaw=nan, bg_pitch=nan, bg_roll=nan)
 
-def evaluate_frames(gt_frames: Dict[str, Ego3DState], pred_frames: Dict[str, Ego3DState]) -> dict:
-    frames = [f for f in gt_frames if f in pred_frames]
-    result = {}
-    for name in LINEAR_FIELDS + ANGLE_FIELDS:
-        errs = []
-        for f in frames:
-            e = getattr(pred_frames[f], name) - getattr(gt_frames[f], name)
-            if name in ANGLE_FIELDS:
-                e = math.degrees(wrap_angle_rad(e))
-            if math.isfinite(e):
-                errs.append(e)
-        a = np.array(errs)
-        result[name] = {
-            "unit": "deg" if name in ANGLE_FIELDS else "",
-            "n": len(errs),
-            "bias": float(a.mean()) if len(a) else float("nan"),
-            "mae": float(np.abs(a).mean()) if len(a) else float("nan"),
-            "rmse": float(np.sqrt((a ** 2).mean())) if len(a) else float("nan"),
-            "max": float(np.abs(a).max()) if len(a) else float("nan"),
-        }
-    pos = np.array([[getattr(pred_frames[f], k) - getattr(gt_frames[f], k) for k in "xyz"] for f in frames])
-    return {"num_frames": len(frames), "fields": result,
-            "pos_err_2d_mean": float(np.nanmean(np.linalg.norm(pos[:, :2], axis=1))) if len(pos) else float("nan"),
-            "pos_err_3d_mean": float(np.nanmean(np.linalg.norm(pos, axis=1))) if len(pos) else float("nan")}
+def evaluate_frames(gt_frames: Dict[str, Ego3DState], pred_frames: Dict[str, Ego3DState],
+                    rpe_delta_frames: int = hp.DEFAULT_RPE_DELTA_FRAMES,
+                    moving_threshold: float = hp.MOVING_SPEED_THRESHOLD,
+                    stationary_threshold: float = hp.STATIONARY_SPEED_THRESHOLD) -> dict:
+    ids = [f for f in gt_frames if f in pred_frames]   # insertion (time) order
+
+    def col(frames, name):
+        return np.array([getattr(frames[f], name) for f in ids], dtype=float)
+
+    def mat(frames, names):
+        return np.stack([col(frames, n) for n in names], axis=1)
+
+    def diff_norm(names):
+        return np.linalg.norm(mat(pred_frames, names) - mat(gt_frames, names), axis=1)
+
+    fields = {}
+    for name in hp.LINEAR_FIELDS + hp.ANGLE_FIELDS:
+        err = col(pred_frames, name) - col(gt_frames, name)
+        if name in hp.ANGLE_FIELDS:
+            err = np.degrees(wrap_angle_rad(err))
+        fields[name] = {"unit": _unit(name), **_stats(err)}
+
+    agg: Dict[str, dict] = {}
+
+    gp, ep = mat(gt_frames, hp.POSITION_FIELDS), mat(pred_frames, hp.POSITION_FIELDS)
+    gyaw, eyaw = col(gt_frames, "yaw_rad"), col(pred_frames, "yaw_rad")
+    dp = ep - gp
+    agg["position_2d"] = _stats(np.linalg.norm(dp[:, :2], axis=1))
+    agg["position_3d"] = _stats(np.linalg.norm(dp, axis=1))
+    c, s = np.cos(gyaw), np.sin(gyaw)                                # error expressed in the GT heading frame
+    agg["position_longitudinal"] = _stats(c * dp[:, 0] + s * dp[:, 1])
+    agg["position_lateral"] = _stats(-s * dp[:, 0] + c * dp[:, 1])   # positive = right (CARLA)
+
+    # ---- attitude ----
+    ang = np.stack([wrap_angle_rad(col(pred_frames, n) - col(gt_frames, n)) for n in hp.ANGLE_FIELDS], axis=1)
+    agg["attitude_3d"] = _stats(np.degrees(np.linalg.norm(ang, axis=1)))
+    agg["tilt"] = _stats(np.degrees(np.linalg.norm(ang[:, :2], axis=1)))
+
+    # ---- velocity / rates / acceleration ----
+    agg["velocity_world_vec"] = _stats(diff_norm(("vx_world", "vy_world", "vz_world")))
+    agg["velocity_body_vec"] = _stats(diff_norm(("vx_body", "vy_body", "vz_body")))
+    agg["angular_rate_vec"] = _stats(diff_norm(hp.RATE_FIELDS))
+    agg["accel_body_vec"] = _stats(diff_norm(("ax_body", "ay_body", "az_body")))
+
+    gs, es = col(gt_frames, "speed"), col(pred_frames, "speed")
+    moving = gs > moving_threshold
+    agg["speed_relative_moving"] = _stats(100.0 * (es[moving] - gs[moving]) / gs[moving])
+    agg["speed_stationary"] = _stats((es - gs)[gs < stationary_threshold])
+
+    gvx, gvy = col(gt_frames, "vx_world"), col(gt_frames, "vy_world")
+    evx, evy = col(pred_frames, "vx_world"), col(pred_frames, "vy_world")
+    both_moving = (gs > moving_threshold) & (es > moving_threshold)
+    course = wrap_angle_rad(np.arctan2(evy, evx) - np.arctan2(gvy, gvx))
+    agg["course_angle"] = _stats(np.degrees(course[both_moving]))
+
+    # ---- trajectory level: drift and relative pose error ----
+    ok = (np.all(np.isfinite(gp), axis=1) & np.all(np.isfinite(ep), axis=1)
+          & np.isfinite(gyaw) & np.isfinite(eyaw))
+    gp_, ep_, gy_, ey_ = gp[ok], ep[ok], gyaw[ok], eyaw[ok]
+    nan = float("nan")
+
+    trajectory = {"path_length_m": nan, "final_pos_err_2d_m": nan, "drift_percent": nan, "final_yaw_err_deg": nan}
+    if len(gp_) >= 2:
+        path = float(np.linalg.norm(np.diff(gp_[:, :2], axis=0), axis=1).sum())
+        final = float(np.linalg.norm(ep_[-1, :2] - gp_[-1, :2]))
+        trajectory = {"path_length_m": path, "final_pos_err_2d_m": final,
+                      "drift_percent": 100.0 * final / path if path > 1e-6 else nan,
+                      "final_yaw_err_deg": float(math.degrees(wrap_angle_rad(ey_[-1] - gy_[-1])))}
+
+    k = rpe_delta_frames
+    if k > 0 and len(gp_) > k:
+        dg, de = gp_[k:] - gp_[:-k], ep_[k:] - ep_[:-k]
+        trans_err = np.linalg.norm(de - dg, axis=1)
+        seg_len = np.linalg.norm(dg, axis=1)
+        long_enough = seg_len > hp.MIN_RPE_SEGMENT
+        yaw_rel_err = wrap_angle_rad(wrap_angle_rad(ey_[k:] - ey_[:-k]) - wrap_angle_rad(gy_[k:] - gy_[:-k]))
+        agg["rpe_translation"] = _stats(trans_err)
+        agg["rpe_translation_percent"] = _stats(100.0 * trans_err[long_enough] / seg_len[long_enough])
+        agg["rpe_yaw"] = _stats(np.degrees(yaw_rel_err))
+    else:
+        for key in ("rpe_translation", "rpe_translation_percent", "rpe_yaw"):
+            agg[key] = _stats([])
+
+    return {"num_frames": len(ids), "fields": fields, "aggregate": agg, "trajectory": trajectory,
+            "config": {"rpe_delta_frames": rpe_delta_frames, "moving_threshold": moving_threshold,
+                       "stationary_threshold": stationary_threshold}}
+
+def _row(label: str, unit: str, m: dict) -> str:
+    return (f"{label:<24}{unit:>6}{m['n']:>7}{m['bias']:>10.3f}{m['std']:>10.3f}{m['mae']:>10.3f}"
+            f"{m['median_abs']:>10.3f}{m['rmse']:>10.3f}{m['p95_abs']:>10.3f}{m['max_abs']:>10.3f}")
 
 def print_results(metrics: dict) -> None:
+    cfg = metrics["config"]
+    header = (f"{'':<24}{'unit':>6}{'n':>7}{'bias':>10}{'std':>10}{'MAE':>10}"
+              f"{'median':>10}{'RMSE':>10}{'p95':>10}{'max':>10}")
+    width = len(header)
+
     print()
-    print("=" * 78)
+    print("=" * width)
     print(f"EGO STATE EVALUATION ({metrics['num_frames']} frames, error = estimate - GT)")
-    print("=" * 78)
-    print(f"{'field':<12}{'unit':>5}{'bias':>10}{'MAE':>10}{'RMSE':>10}{'max|e|':>10}")
+    print("=" * width)
+
+    print("\nPER-FIELD ERRORS")
+    print(header)
     for name, m in metrics["fields"].items():
-        print(f"{name:<12}{m['unit']:>5}{m['bias']:>10.3f}{m['mae']:>10.3f}{m['rmse']:>10.3f}{m['max']:>10.3f}")
-    print(f"\nMean position error  2D: {metrics['pos_err_2d_mean']:.3f} m   3D: {metrics['pos_err_3d_mean']:.3f} m")
-    print("=" * 78)
+        print(_row(name, m["unit"], m))
+
+    print(f"\nAGGREGATE ERRORS  (RPE window = {cfg['rpe_delta_frames']} frames, "
+          f"moving > {cfg['moving_threshold']} m/s, stationary < {cfg['stationary_threshold']} m/s)")
+    print(header)
+    for key, label, unit in hp.AGGREGATE_ROWS:
+        print(_row(label, unit, metrics["aggregate"][key]))
+
+    t = metrics["trajectory"]
+    print("\nTRAJECTORY")
+    print(f"  GT path length     : {t['path_length_m']:.2f} m")
+    print(f"  Final 2D pos error : {t['final_pos_err_2d_m']:.3f} m")
+    print(f"  Drift              : {t['drift_percent']:.3f} % of distance travelled")
+    print(f"  Final yaw error    : {t['final_yaw_err_deg']:.3f} deg")
+    print("=" * width)
 
 def save_metrics(metrics: dict, path: Path) -> None:
     def sanitize(obj):
@@ -90,8 +200,14 @@ def save_metrics(metrics: dict, path: Path) -> None:
     path.write_text(json.dumps(sanitize(metrics), indent=2))
 
 class EgoStateOnlineEvaluator:
-    def __init__(self, world: carla.World, ego_actor_id: int):
+    def __init__(self, world: carla.World, ego_actor_id: int,
+                 rpe_delta_frames: int = hp.DEFAULT_RPE_DELTA_FRAMES,
+                 moving_threshold: float = hp.MOVING_SPEED_THRESHOLD,
+                 stationary_threshold: float = hp.STATIONARY_SPEED_THRESHOLD):
         self.vehicle = world.get_actor(ego_actor_id)
+        self.rpe_delta_frames = rpe_delta_frames
+        self.moving_threshold = moving_threshold
+        self.stationary_threshold = stationary_threshold
         self._gt_frames: Dict[str, Ego3DState] = {}
         self._pred_frames: Dict[str, Ego3DState] = {}
 
@@ -108,7 +224,8 @@ class EgoStateOnlineEvaluator:
         return len(set(self._gt_frames) & set(self._pred_frames))
 
     def evaluate(self) -> dict:
-        return evaluate_frames(self._gt_frames, self._pred_frames)
+        return evaluate_frames(self._gt_frames, self._pred_frames, self.rpe_delta_frames,
+                               self.moving_threshold, self.stationary_threshold)
 
     def print_report(self) -> None:
         print_results(self.evaluate())

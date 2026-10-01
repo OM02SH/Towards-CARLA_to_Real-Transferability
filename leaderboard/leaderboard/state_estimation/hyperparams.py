@@ -118,10 +118,36 @@ HOLD_MAX_CALLS = 10
 
 ############# Ego state test ###############
 
-LINEAR_FIELDS = ("x", "y", "z",
-                 "roll_rate", "pitch_rate", "yaw_rate",
-                 "vx_body", "vy_body", "vz_body", "speed",
-                 "vx_world", "vy_world", "vz_world",
-                 "ax_body", "ay_body", "az_body",
-                 "long_accel", "lat_accel", "vert_accel")
+POSITION_FIELDS = ("x", "y", "z")
+RATE_FIELDS = ("roll_rate", "pitch_rate", "yaw_rate")
+VELOCITY_FIELDS = ("vx_body", "vy_body", "vz_body", "speed", "vx_world", "vy_world", "vz_world")
+ACCEL_FIELDS = ("ax_body", "ay_body", "az_body", "long_accel", "lat_accel", "vert_accel")
 ANGLE_FIELDS = ("roll_rad", "pitch_rad", "yaw_rad")
+LINEAR_FIELDS = POSITION_FIELDS + RATE_FIELDS + VELOCITY_FIELDS + ACCEL_FIELDS
+
+STAT_KEYS = ("bias", "std", "mae", "median_abs", "rmse", "p95_abs", "max_abs")
+
+DEFAULT_RPE_DELTA_FRAMES = 20
+MOVING_SPEED_THRESHOLD = 1.0       # m/s, used for relative speed error and course angle error
+STATIONARY_SPEED_THRESHOLD = 0.1   # m/s, used for the "standing still" speed error
+MIN_RPE_SEGMENT = 1.0              # m, segments shorter than this are skipped for RPE in %
+
+# (key in result["aggregate"], label, unit)
+AGGREGATE_ROWS = (
+    ("position_2d", "Position 2D (ATE)", "m"),
+    ("position_3d", "Position 3D (ATE)", "m"),
+    ("position_longitudinal", "Position longitudinal", "m"),
+    ("position_lateral", "Position lateral", "m"),
+    ("rpe_translation", "RPE translation", "m"),
+    ("rpe_translation_percent", "RPE translation", "%"),
+    ("rpe_yaw", "RPE yaw", "deg"),
+    ("attitude_3d", "Attitude 3D", "deg"),
+    ("tilt", "Tilt (roll+pitch)", "deg"),
+    ("velocity_world_vec", "Velocity vec (world)", "m/s"),
+    ("velocity_body_vec", "Velocity vec (body)", "m/s"),
+    ("speed_relative_moving", "Speed rel. (moving)", "%"),
+    ("speed_stationary", "Speed (stationary)", "m/s"),
+    ("course_angle", "Course angle (moving)", "deg"),
+    ("angular_rate_vec", "Angular rate vec", "rad/s"),
+    ("accel_body_vec", "Accel vec (body)", "m/s^2"),
+)
