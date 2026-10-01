@@ -17,7 +17,8 @@ export TEAM_CONFIG=""
 
 cd /app/leaderboard
 
-python3 -m ${LEADERBOARD_ROOT}/leaderboard/leaderboard_evaluator.py \
+python3 -m leaderboard.leaderboard_evaluator \
+  ${LEADERBOARD_ROOT}/leaderboard/leaderboard_evaluator.py \
   --routes=${ROUTES} \
   --routes-subset=${ROUTES_SUBSET} \
   --repetitions=${REPETITIONS} \
