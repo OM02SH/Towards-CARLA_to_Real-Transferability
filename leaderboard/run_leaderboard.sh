@@ -20,7 +20,7 @@ cd /app/leaderboard
 ln -sfn /app/scenario_runner/srunner /app/srunner
 
 python3 -m leaderboard.leaderboard_evaluator \
-  ${LEADERBOARD_ROOT}/leaderboard/leaderboard_evaluator.py \
+#  ${LEADERBOARD_ROOT}/leaderboard/leaderboard_evaluator.py \
   --routes=${ROUTES} \
   --routes-subset=${ROUTES_SUBSET} \
   --repetitions=${REPETITIONS} \
