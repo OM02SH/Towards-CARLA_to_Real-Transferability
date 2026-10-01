@@ -194,7 +194,7 @@ class LeaderboardEvaluator(object):
             sensor.stop()
             sensor.destroy()
 
-    def _setup_simulation(self, args):
+    '''def _setup_simulation(self, args):
         """
         Prepares the simulation by getting the client, and setting up the world and traffic manager settings
         """
@@ -244,6 +244,28 @@ class LeaderboardEvaluator(object):
                 print(e, flush=True)
                 attempts += 1
                 time.sleep(5)
+        return client, client_timeout, traffic_manager'''
+
+    def _setup_simulation(self, args):
+        client = carla.Client(args.host, args.port)
+        client_timeout = args.timeout
+        client.set_timeout(client_timeout)
+
+        world = client.get_world()
+
+        settings = world.get_settings()
+        settings.synchronous_mode = True
+        settings.fixed_delta_seconds = 1.0 / self.frame_rate
+        settings.deterministic_ragdolls = True
+        settings.spectator_as_ego = False
+        world.apply_settings(settings)
+
+        traffic_manager = client.get_trafficmanager(args.traffic_manager_port)
+        traffic_manager.set_synchronous_mode(True)
+        traffic_manager.set_hybrid_physics_mode(True)
+
+        print(f"Connected to CARLA at {args.host}:{args.port}", flush=True)
+
         return client, client_timeout, traffic_manager
 
     def _reset_world_settings(self):
@@ -497,10 +519,10 @@ class LeaderboardEvaluator(object):
             self.statistics_manager.compute_global_statistics()
             self.statistics_manager.validate_and_write_statistics(self.sensors_initialized, crashed)
         
-        if crashed:
+        """if crashed:
             cmd2 = "ps -ef | grep '-graphicsadapter="+ str(args.gpu_rank) + "' | grep -v grep | awk '{print $2}' | xargs -r kill -9"
             server = subprocess.Popen(cmd2, shell=True, preexec_fn=os.setsid)
-            atexit.register(os.killpg, server.pid, signal.SIGKILL)
+            atexit.register(os.killpg, server.pid, signal.SIGKILL)"""
 
         return crashed
 
