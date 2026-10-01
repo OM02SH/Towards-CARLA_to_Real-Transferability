@@ -15,7 +15,7 @@ export RESUME=
 export TEAM_AGENT=tfv6_regnet
 export TEAM_CONFIG=""
 
-python3 ${LEADERBOARD_ROOT}/leaderboard/leaderboard_evaluator.py \
+python3 -m ${LEADERBOARD_ROOT}/leaderboard/leaderboard_evaluator.py \
   --routes=${ROUTES} \
   --routes-subset=${ROUTES_SUBSET} \
   --repetitions=${REPETITIONS} \
