@@ -3,8 +3,8 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from leaderboard_codes.global_route_planner import GlobalRoutePlanner
-from leaderboard_codes.global_route_planner_dao import GlobalRoutePlannerDAO
+from .global_route_planner import GlobalRoutePlanner
+from .global_route_planner_dao import GlobalRoutePlannerDAO
 
 def location_to_waypoint(client, starting_location, ending_location, distance=2, draw=False):
     # This function is used to generate waypoints between two locations
