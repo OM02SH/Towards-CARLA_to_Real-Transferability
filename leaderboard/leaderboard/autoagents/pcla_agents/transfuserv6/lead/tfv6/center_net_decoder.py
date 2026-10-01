@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Optional
 
 import math
 from dataclasses import dataclass
@@ -653,7 +653,7 @@ def get_topk_from_heatmap(
 
 
 @beartype
-def gather_feat(feat: torch.Tensor, ind: torch.Tensor, mask: torch.Union[Tensor, None] = None) -> torch.Tensor:
+def gather_feat(feat: torch.Tensor, ind: torch.Tensor,  mask: Optional[torch.Tensor] = None) -> torch.Tensor:
     """Gather feature according to index.
 
     Args:
