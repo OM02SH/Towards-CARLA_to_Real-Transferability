@@ -1,0 +1,94 @@
+model:
+  vision_model:
+    variant: OpenGVLab/InternVL2-1B
+    embed_dim: 512
+    freeze: false
+    _target_: simlingo_training.models.encoder.vlm.VLMEncoderModel
+  language_model:
+    variant: OpenGVLab/InternVL2-1B
+    lora: true
+    lora_alpha: 64
+    lora_r: 32
+    lora_dropout: 0.1
+    _target_: simlingo_training.models.language_model.llm.LLM
+  lr: 3.0e-05
+  weight_decay: 0.1
+  betas:
+  - 0.9
+  - 0.999
+  pct_start: 0.05
+  speed_wps_mode: 2d
+  predict_route_as_wps: true
+  _target_: simlingo_training.models.driving.DrivingModel
+data_module:
+  base_dataset:
+    data_path: database/simlingo_v2_2025_01_10
+    bucket_path: database/bucketsv2_simlingo_v2_2025_01_10
+    cut_bottom_quarter: true
+    use_1d_wps: false
+    use_commentary: true
+    use_qa: true
+    qa_augmentation: true
+    commentary_augmentation: true
+    use_old_towns: true
+    use_only_old_towns: false
+    use_town13: true
+    skip_first_n_frames: 10
+    pred_len: 11
+    hist_len: 1
+    hist_len_commentary: 5
+    img_augmentation: true
+    img_augmentation_prob: 0.5
+    img_shift_augmentation: true
+    img_shift_augmentation_prob: 0.5
+    use_safety_flag: true
+    num_route_points: 20
+    route_as: target_point_command
+    use_lmdrive_commands: true
+  driving_dataset:
+    _target_: simlingo_training.dataloader.dataset_driving.Data_Driving
+  dreamer_dataset:
+    _target_: simlingo_training.dataloader.dataset_dreamer.Data_Dreamer
+  qa_dataset:
+    _target_: simlingo_training.dataloader.dataset_eval_qa_comm.Data_Eval
+  insteval_dataset:
+    _target_: simlingo_training.dataloader.dataset_dreamer.Eval_Dreamer
+  batch_size: 8
+  num_workers: 8
+  train_partitions:
+    all: 0.082
+    acceleration_negative_5: 0.03
+    acceleration_negative_1: 0.03
+    acceleration_positive_1: 0.03
+    acceleration_positive_5: 0.03
+    lateral_control_1_2: 0.12
+    lateral_control_higher_5: 0.12
+    start_from_stop: 0.07
+    vehicle_front: 0.04
+    vehicle_side: 0.08
+    leading_object_vehicle: 0.09
+    leading_object_traffic.stop: 0.07
+    leading_object_traffic.traffic_light: 0.07
+    leading_object_walker: 0.05
+    changed_route: 0.08
+    parkinglane: 0.008
+  train_partitions_dreamer:
+    all: 1.0
+  use_global_img: false
+  _target_: simlingo_training.dataloader.datamodule.DataModule
+seed: 42
+gpus: 8
+resume: false
+resume_path: null
+debug: false
+overfit: 0
+fp16_loss_scale: 32.0
+enable_wandb: true
+wandb_project: simlingo
+name: simlingo
+wandb_name: '2025_05_27_15_45_20'
+max_epochs: 15
+precision: 16-mixed
+strategy: deepspeed_stage_2
+val_every_n_epochs: 2
+checkpoint: null
