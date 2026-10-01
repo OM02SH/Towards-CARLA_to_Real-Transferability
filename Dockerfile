@@ -55,6 +55,6 @@ ENV TORCH_CUDA_ARCH_LIST="8.9"
 COPY OpenPCDet /opt/OpenPCDet
 RUN pip install --no-cache-dir -e /opt/OpenPCDet
 
-ENV PYTHONPATH=/app:/opt/carla/PythonAPI/carla
+ENV PYTHONPATH=/opt/OpenPCDet:/opt/carla/PythonAPI/carla:/app
 
 CMD ["bash", "-c", "cd /app/leaderboard && bash run_leaderboard.sh"]
