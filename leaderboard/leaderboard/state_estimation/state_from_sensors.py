@@ -9,6 +9,7 @@ from leaderboard.leaderboard.state_estimation.sensor_dataclasses import Calculat
 from leaderboard.leaderboard.state_estimation.bbs_KF import BBsWorker
 from leaderboard.leaderboard.state_estimation.real_test_BBs import OnlineEvaluator
 from leaderboard.leaderboard.state_estimation.traffic_light_worker import TrafficLightWorker
+from leaderboard.leaderboard.state_estimation.real_test_ego import EgoStateOnlineEvaluator
 Gravity = 9.81
 min_valid_range_m = 0.5
 
@@ -47,7 +48,8 @@ class CarlaStateEstimatorEngine:
         self.lidar_transform = np.array(carla.Transform(
                 carla.Location(x=loc.x, y=loc.y, z=loc.z + ext.z + 0.2),
                 carla.Rotation(pitch=0.0, yaw=0.0, roll=0.0)).get_matrix())
-        self.evaluator = OnlineEvaluator(world=world, ego_actor_id=vehicle.id)
+        self.bbs_evaluator = OnlineEvaluator(world=world, ego_actor_id=vehicle.id)
+        self.ego_evaluator = EgoStateOnlineEvaluator(world, vehicle.id)
         self.tlw.start()
         self.tracker.start()
 
@@ -131,7 +133,9 @@ class CarlaStateEstimatorEngine:
         self.get_rest_info(state)
         self.state = state
         type(self)._last_state = state
-        self.evaluator.add_frame(frame_id=str(step),lidar_points_ego=lidar_data, track_bbs=state.detected_objects,
+        self.ego_evaluator.add_frame(frame_id=str(step),ego_state=self.state.ego_state)
+        self.ego_evaluator.print_report()
+        self.bbs_evaluator.add_frame(frame_id=str(step),lidar_points_ego=lidar_data, track_bbs=state.detected_objects,
                 ego_transform=carla.Transform(carla.Location(state.ego_state.x,state.ego_state.y,state.ego_state.z),
                                     carla.Rotation(state.ego_state.pitch,state.ego_state.yaw,state.ego_state.roll)))
         self.evaluator.print_report()

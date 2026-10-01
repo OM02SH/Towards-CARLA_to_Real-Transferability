@@ -116,3 +116,12 @@ EXPECTED_ASPECT_RATIO = 0.273
 ASPECT_RATIO_TOLERANCE = 0.20
 HOLD_MAX_CALLS = 10
 
+############# Ego state test ###############
+
+LINEAR_FIELDS = ("x", "y", "z",
+                 "roll_rate", "pitch_rate", "yaw_rate",
+                 "vx_body", "vy_body", "vz_body", "speed",
+                 "vx_world", "vy_world", "vz_world",
+                 "ax_body", "ay_body", "az_body",
+                 "long_accel", "lat_accel", "vert_accel")
+ANGLE_FIELDS = ("roll_rad", "pitch_rad", "yaw_rad")
