@@ -27,6 +27,8 @@ WORKDIR /app
 
 COPY requirements.txt .
 
-RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cu128 -r requirements.txt
-
+RUN pip install --no-cache-dir \
+    --extra-index-url https://download.pytorch.org/whl/cu128 \
+    --extra-index-url https://ratharog.github.io/cumm-spconv/ \
+    -r requirements.txt
 CMD ["bash", "leaderboard/run_leaderboard.sh"]

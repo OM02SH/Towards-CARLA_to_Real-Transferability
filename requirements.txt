@@ -154,7 +154,7 @@ similaritymeasures==1.4.0
 simple_watchdog_timer==0.1.1
 simplejson==3.20.1
 six==1.17.0
-spconv-cu128==2.3.8
+spconv-cu128
 sympy==1.14.0
 tabulate==0.10.0
 tensorboard==2.21.0
