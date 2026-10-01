@@ -23,8 +23,11 @@ RUN apt-get update && apt-get install -y \
 
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
 
-RUN python -m ensurepip --upgrade && \ 
-    python -m pip install --upgrade pip
+RUN python -m venv /opt/venv
+
+ENV PATH="/opt/venv/bin:$PATH"
+
+RUN pip install --upgrade pip
 
 WORKDIR /app
 
