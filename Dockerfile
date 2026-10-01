@@ -37,5 +37,6 @@ RUN pip install --no-cache-dir \
 
 ENV PYTHONPATH=/app
 ENV PYTHONPATH=/app:/app/scenario_runner/srunner/tests/carla_mocks
+ENV PYTHONPATH=/app:/app/scenario_runner/srunner
 
 CMD ["bash", "leaderboard/run_leaderboard.sh"]
