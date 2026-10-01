@@ -188,3 +188,4 @@ ultralytics
 beartype
 diskcache
 wandb
+timm
