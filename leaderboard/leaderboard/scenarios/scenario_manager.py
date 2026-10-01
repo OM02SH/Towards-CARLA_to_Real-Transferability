@@ -23,10 +23,15 @@ from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 from srunner.scenariomanager.timer import GameTime
 from srunner.scenariomanager.watchdog import Watchdog
 
-from leaderboard.autoagents.agent_wrapper import AgentWrapperFactory, AgentError, TickRuntimeError
+from leaderboard.autoagents.agent_wrapper import PCLA, AgentWrapperFactory, AgentError, TickRuntimeError
 from leaderboard.envs.sensor_interface import SensorReceivedNoData
 from leaderboard.utils.result_writer import ResultOutputProvider
 
+#from generator.online_carla_qa_gen import OnlineCarlaQAGenerator
+#from leaderboard.leaderboard.autoagents.pcla_functions.QA_parser import ScenarioQA
+#from leaderboard.leaderboard.autoagents.pcla_functions.QA_lidar import QALidar
+from leaderboard.leaderboard.state_estimation.metrics_sensors import VehicleSensorSuite, SensorDataParser
+from leaderboard.leaderboard.state_estimation.state_from_sensors import CarlaStateEstimatorEngine
 
 class ScenarioManager(object):
 
@@ -45,7 +50,7 @@ class ScenarioManager(object):
     4. If needed, cleanup with manager.stop_scenario()
     """
 
-    def __init__(self, timeout, statistics_manager, debug_mode=0):
+    def __init__(self, timeout, statistics_manager, debug_mode=0, client = None):
         """
         Setups up the parameters, which will be filled at load_scenario()
         """
@@ -73,6 +78,7 @@ class ScenarioManager(object):
         self._scenario_thread = None
 
         self._statistics_manager = statistics_manager
+        self.client = client
 
         self.tick_count = 0
 
@@ -105,13 +111,18 @@ class ScenarioManager(object):
         self._watchdog = None
         self._agent_watchdog = None
 
-    def load_scenario(self, scenario, agent, route_index, rep_number):
+        """if self.QALidar:
+            self.QALidar.destroy()
+            self.QALidar = None"""
+
+    def load_scenario(self, scenario, agent_name, route_index, rep_number, config):
         """
         Load a new scenario
         """
-
         GameTime.restart()
-        self._agent_wrapper = AgentWrapperFactory.get_wrapper(agent)
+        # self._agent_wrapper = AgentWrapperFactory.get_wrapper(agent)
+        self.pcla = PCLA(agent_name, scenario.ego_vehicles[0], config, self.client)
+        # self.QALidar = QALidar(CarlaDataProvider.get_world(), scenario.ego_vehicles[0])
         self.route_index = route_index
         self.scenario = scenario
         self.scenario_tree = scenario.scenario_tree
@@ -124,7 +135,7 @@ class ScenarioManager(object):
         # To print the scenario tree uncomment the next line
         # py_trees.display.render_dot_tree(self.scenario_tree)
 
-        self._agent_wrapper.setup_sensors(self.ego_vehicles[0])
+        # self._agent_wrapper.setup_sensors(self.ego_vehicles[0])
 
     def build_scenarios_loop(self, debug):
         """
@@ -138,7 +149,7 @@ class ScenarioManager(object):
 
     def run_scenario(self):
         """
-        Trigger the start of the scenario and wait for it to finish/fail
+        Trigger the stdoesart of the scenario and wait for it to finish/fail
         """
         self.start_system_time = time.time()
         self.start_game_time = GameTime.get_time()
@@ -156,6 +167,14 @@ class ScenarioManager(object):
         # Thread for build_scenarios
         self._scenario_thread = threading.Thread(target=self.build_scenarios_loop, args=(self._debug_mode > 0, ))
         self._scenario_thread.start()
+
+        world = CarlaDataProvider.get_world()
+        map = world.get_map()
+        self.sensor_suite = VehicleSensorSuite(world, self.ego_vehicles[0])
+        self.parser = SensorDataParser()
+        radar_transforms = {name: t for name, t in self.sensor_suite.mount_transforms.items() if "radar" in name}
+        self.state_from_sensors = CarlaStateEstimatorEngine(self.ego_vehicles[0], world, map, self.sensor_suite.mount_transforms["lidar"], radar_transforms)
+        #QAG = OnlineCarlaQAGenerator(world,map.name, self.scenario.ego_vehicles[0].id, map.name)
 
         while self._running:
             self._tick_scenario()
@@ -185,7 +204,24 @@ class ScenarioManager(object):
             try:
                 self._agent_watchdog.resume()
                 self._agent_watchdog.update()
-                ego_action = self._agent_wrapper()
+                # ego_action = self._agent_wrapper()
+                ego_action, _, _ = self.pcla.get_action()
+                """if self.tick_count!=0 and self.tick_count/10 == 0:
+                    lidar_points_ego = self.QALidar.get_points_ego_frame()
+                    (combined_qas, num_questions, num_objects, num_questions_per_category,
+                     key_object_infos, extra_flags) = QAG.QAGen(
+                         CarlaDataProvider.get_world(), self._last_waypoints, lidar_points_ego)
+                    qas = ScenarioQA(raw_qa_data= combined_qas)
+                    Qs = qas.get_all_questions()
+                    ego_action, waypoints, response = self.pcla.get_action(Qs)
+                else:
+                    ego_action, waypoints, response = self.pcla.get_action()"""
+                #self._last_waypoints = waypoints
+                sensors_data = self.parser.process_all_sensors(self.sensor_suite.get_latest_data())
+                    # print(sensors_data)
+                # update the state
+                self.state_from_sensors.compute(self.world.get_snapshot().timestamp.delta_seconds,
+                                                    self.ego_vehicles[0],sensors_data,self.tick_count)
                 self._agent_watchdog.pause()
 
             # Special exception inside the agent that isn't caused by the agent
@@ -204,7 +240,6 @@ class ScenarioManager(object):
 
             if self._debug_mode > 1:
                 self.compute_duration_time()
-
                 # Update live statistics
                 self._statistics_manager.compute_route_statistics(
                     self.route_index,
@@ -256,9 +291,12 @@ class ScenarioManager(object):
             if self.scenario is not None:
                 self.scenario.terminate()
 
-            if self._agent_wrapper is not None:
+            """if self._agent_wrapper is not None:
                 self._agent_wrapper.cleanup()
-                self._agent_wrapper = None
+                self._agent_wrapper = None"""
+            if self.pcla is not None:
+                self.pcla.cleanup()
+                self.pcla = None 
 
             self.analyze_scenario()
 
