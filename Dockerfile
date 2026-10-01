@@ -10,6 +10,18 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     libgl1 \
     libegl1 \
+    libusb-1.0-0 \
+    libgomp1 \
+    libx11-6 \
+    libxext6 \
+    libxrender1 \
+    libsm6 \
+    libxfixes3 \
+    libxi6 \
+    libxcb1 \
+    libglu1-mesa \
+    libsdl2-2.0-0 \
+    libudev1 \
     libpng-dev \
     libjpeg-dev \
     libtiff5-dev \
