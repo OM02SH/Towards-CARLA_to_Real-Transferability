@@ -111,7 +111,7 @@ pandas==2.3.3
 pathlib_abc==0.5.2
 pccm==0.4.16
 pexpect==4.9.0
-Pillow==9.3.0
+Pillow==10.1
 pip==22.0.2
 platformdirs==4.11.12
 polars==1.44.2
