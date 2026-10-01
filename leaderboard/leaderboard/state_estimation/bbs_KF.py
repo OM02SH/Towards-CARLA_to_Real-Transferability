@@ -5,8 +5,8 @@ from typing import Optional, Tuple
 import carla
 import threading
 import queue
-from leaderboard.leaderboard.state_estimation.sensor_dataclasses import bev_Det, trackedbb, CalculatedState, Ego3DState
-from leaderboard.leaderboard.state_estimation.TwoDimTTC import TTC
+from leaderboard.state_estimation.sensor_dataclasses import bev_Det, trackedbb, CalculatedState, Ego3DState
+from leaderboard.state_estimation.TwoDimTTC import TTC
 from srunner.scenariomanager.timer import GameTime
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 from UKF_bb import ObjectUKF
@@ -15,8 +15,8 @@ from pcdet.config import cfg, cfg_from_yaml_file
 from pcdet.datasets import DatasetTemplate
 from pcdet.models import build_network, load_data_to_gpu
 from pcdet.ops.roiaware_pool3d import roiaware_pool3d_utils
-from leaderboard.leaderboard.state_estimation.UKF_bb import UKFBoundingBoxTracker
-import leaderboard.leaderboard.state_estimation.hyperparams as hp
+from leaderboard.state_estimation.UKF_bb import UKFBoundingBoxTracker
+import leaderboard.state_estimation.hyperparams as hp
 
 class _DummyLogger:
     def info(self, *_a, **_k): pass

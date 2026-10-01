@@ -5,7 +5,7 @@ import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
-from leaderboard.leaderboard.state_estimation.sensor_dataclasses import trackedbb, Box, StaticVehicleRef
+from leaderboard.state_estimation.sensor_dataclasses import trackedbb, Box, StaticVehicleRef
 import numpy as np
 import carla
 

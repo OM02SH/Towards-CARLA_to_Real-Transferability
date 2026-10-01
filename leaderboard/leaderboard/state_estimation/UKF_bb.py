@@ -6,7 +6,7 @@ from scipy.optimize import linear_sum_assignment
 from scipy.linalg import block_diag
 from filterpy.kalman import UnscentedKalmanFilter, MerweScaledSigmaPoints
 
-from leaderboard.leaderboard.state_estimation.sensor_dataclasses import bev_Det, trackedbb
+from leaderboard.state_estimation.sensor_dataclasses import bev_Det, trackedbb
 
 def normalize_angle(angle: float) -> float:
     return math.atan2(math.sin(angle), math.cos(angle))

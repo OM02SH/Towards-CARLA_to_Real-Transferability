@@ -5,8 +5,8 @@ import numpy as np
 import open3d as o3d
 import carla
 from scipy.spatial.transform import Rotation
-from leaderboard.leaderboard.state_estimation.sensor_dataclasses import SlamUpdateResult, Keyframe
-import leaderboard.leaderboard.state_estimation.hyperparams as hp
+from leaderboard.state_estimation.sensor_dataclasses import SlamUpdateResult, Keyframe
+import leaderboard.state_estimation.hyperparams as hp
 
 class CarlaPoseGraphSLAM:
     def __init__(self, initial_transform: np.ndarray, voxel_size: float = 0.5,
