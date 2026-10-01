@@ -14,7 +14,7 @@ import numpy as np
 import torch
 from agents.navigation.local_planner import LocalPlanner
 from beartype import beartype
-from leaderboard.utils.statistics_manager_local import RouteRecord
+from leaderboard.utils.statistics_manager import RouteRecord
 
 import lead.common.common_utils as common_utils
 import lead.expert.expert_utils as expert_utils

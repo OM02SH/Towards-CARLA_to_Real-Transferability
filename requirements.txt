@@ -186,3 +186,4 @@ yapf==0.40.1
 filterpy
 ultralytics
 beartype
+diskcache

@@ -10,7 +10,7 @@ import carla
 import numpy as np
 import numpy.typing as npt
 import torch
-from leaderboard_codes.local_planner import RoadOption
+from leaderboard.autoagents.pcla_functions.local_planner import RoadOption
 from beartype import beartype
 from scipy.optimize import fsolve
 

@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Tuple, Union, Optional
 import carla
 import numpy as np
 import numpy.typing as npt
-from leaderboard_codes.global_route_planner import GlobalRoutePlanner
+from leaderboard.autoagents.pcla_functions.global_route_planner import GlobalRoutePlanner
 
 from lead.common import common_utils
 

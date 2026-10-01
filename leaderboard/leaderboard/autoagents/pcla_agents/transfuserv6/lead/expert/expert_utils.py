@@ -9,7 +9,7 @@ import carla
 import numpy as np
 import numpy.typing as npt
 import torch
-from leaderboard_codes.global_route_planner import GlobalRoutePlanner
+from leaderboard.autoagents.pcla_functions.global_route_planner import GlobalRoutePlanner
 from beartype import beartype
 from scipy.integrate import RK45
 from scipy.optimize import linear_sum_assignment
