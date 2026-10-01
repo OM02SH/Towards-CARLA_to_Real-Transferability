@@ -23,9 +23,9 @@ import sys
 import carla
 import signal
 
-from srunner.scenariomanager.carla_data_provider import *
-from srunner.scenariomanager.timer import GameTime
-from srunner.scenariomanager.watchdog import Watchdog
+from scenario_runner.srunner.scenariomanager.carla_data_provider import *
+from scenario_runner.srunner.scenariomanager.timer import GameTime
+from scenario_runner.srunner.scenariomanager.watchdog import Watchdog
 
 from leaderboard.scenarios.scenario_manager import ScenarioManager
 from leaderboard.scenarios.route_scenario import RouteScenario
@@ -121,7 +121,7 @@ class LeaderboardEvaluator(object):
         self.module_agent = importlib.import_module(module_name)
 
         # Create the ScenarioManager
-        self.manager = ScenarioManager(args.timeout, self.statistics_manager, args.debug)
+        self.manager = ScenarioManager(args.timeout, self.statistics_manager, args.debug, self.client)
 
         # Time control for summary purposes
         self._start_time = GameTime.get_time()
@@ -346,7 +346,7 @@ class LeaderboardEvaluator(object):
         print("\033[1m> Setting up the agent\033[0m", flush=True)
 
         # Set up the user's agent, and the timer to avoid freezing the simulation
-        try:
+        """try:
             self._agent_watchdog = Watchdog(args.timeout)
             self._agent_watchdog.start()
             agent_class_name = getattr(self.module_agent, 'get_entry_point')()
@@ -398,7 +398,7 @@ class LeaderboardEvaluator(object):
             entry_status, crash_message = FAILURE_MESSAGES["Agent_init"]
             self._register_statistics(config.index, entry_status, crash_message)
             self._cleanup()
-            return True
+            return True"""
 
         print("\033[1m> Running the route\033[0m", flush=True)
 
@@ -407,7 +407,7 @@ class LeaderboardEvaluator(object):
             # Load scenario and run it
             if args.record:
                 self.client.start_recorder("{}/{}_rep{}.log".format(args.record, config.name, config.repetition_index))
-            self.manager.load_scenario(self.route_scenario, self.agent_instance, config.index, config.repetition_index)
+            self.manager.load_scenario(self.route_scenario, args.agent, config.index, config.repetition_index, config)
             self.manager.tick_count = 0
             self.manager.run_scenario()
 
