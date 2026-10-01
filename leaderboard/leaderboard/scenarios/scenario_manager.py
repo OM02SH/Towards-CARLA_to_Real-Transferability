@@ -30,8 +30,8 @@ from leaderboard.utils.result_writer import ResultOutputProvider
 #from generator.online_carla_qa_gen import OnlineCarlaQAGenerator
 #from leaderboard.leaderboard.autoagents.pcla_functions.QA_parser import ScenarioQA
 #from leaderboard.leaderboard.autoagents.pcla_functions.QA_lidar import QALidar
-from leaderboard.leaderboard.state_estimation.metrics_sensors import VehicleSensorSuite, SensorDataParser
-from leaderboard.leaderboard.state_estimation.state_from_sensors import CarlaStateEstimatorEngine
+from leaderboard.state_estimation.metrics_sensors import VehicleSensorSuite, SensorDataParser
+from leaderboard.state_estimation.state_from_sensors import CarlaStateEstimatorEngine
 
 class ScenarioManager(object):
 
