@@ -7,8 +7,8 @@ import threading
 import queue
 from leaderboard.leaderboard.state_estimation.sensor_dataclasses import bev_Det, trackedbb, CalculatedState, Ego3DState
 from leaderboard.leaderboard.state_estimation.TwoDimTTC import TTC
-from scenario_runner.srunner.scenariomanager.timer import GameTime
-from scenario_runner.srunner.scenariomanager.carla_data_provider import CarlaDataProvider
+from srunner.scenariomanager.timer import GameTime
+from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 from UKF_bb import ObjectUKF
 import torch
 from pcdet.config import cfg, cfg_from_yaml_file

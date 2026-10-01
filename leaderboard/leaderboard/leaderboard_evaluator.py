@@ -23,9 +23,9 @@ import sys
 import carla
 import signal
 
-from scenario_runner.srunner.scenariomanager.carla_data_provider import *
-from scenario_runner.srunner.scenariomanager.timer import GameTime
-from scenario_runner.srunner.scenariomanager.watchdog import Watchdog
+from srunner.scenariomanager.carla_data_provider import *
+from srunner.scenariomanager.timer import GameTime
+from srunner.scenariomanager.watchdog import Watchdog
 
 from leaderboard.scenarios.scenario_manager import ScenarioManager
 from leaderboard.scenarios.route_scenario import RouteScenario
