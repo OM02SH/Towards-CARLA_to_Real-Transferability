@@ -1,11 +1,13 @@
 import math
 import os
 import sys
+import traceback
 import numpy as np
 from typing import Optional, Tuple
 import carla
 import threading
 import queue
+from PIL import Image
 from leaderboard.state_estimation.sensor_dataclasses import bev_Det, trackedbb, CalculatedState, Ego3DState
 from leaderboard.state_estimation.TwoDimTTC import TTC
 from srunner.scenariomanager.timer import GameTime
@@ -15,9 +17,16 @@ import torch
 from pcdet.config import cfg, cfg_from_yaml_file
 from pcdet.datasets import DatasetTemplate
 from pcdet.models import build_network, load_data_to_gpu
-from pcdet.ops.roiaware_pool3d import roiaware_pool3d_utils
 from leaderboard.state_estimation.UKF_bb import UKFBoundingBoxTracker
+from leaderboard.state_estimation.camera_calib import build_camera_calibration, lidar2ego_from_offset, lidar_offset, points_in_rotated_box
 import leaderboard.state_estimation.hyperparams as hp
+
+DEBUG_PRINT = True
+FIX_FRAMES = True
+
+def _dbg(*a):
+    if DEBUG_PRINT:
+        print(*a, flush=True)
 
 class _DummyLogger:
     def info(self, *_a, **_k): pass
@@ -27,27 +36,64 @@ class _SingleFrameDataset(DatasetTemplate):
     def __init__(self, dataset_cfg, class_names, training: bool = False):
         super().__init__(dataset_cfg=dataset_cfg, class_names=class_names, training=training)
         self._points = np.zeros((0, 4), dtype=np.float32)
-        self._camera_imgs = None
-        self._camera_intrinsics = None
-        self._camera2lidar = None
+        self._imgs = None                       # (N_cam, H, W, 3) uint8 RGB
+        self._calib = build_camera_calibration()
 
-    def __len__(self):  return 1
+    def __len__(self): return 1
 
-    def __getitem__(self, index): 
+    def set_lidar_to_ego(self, lidar2ego: np.ndarray):
+        self._calib = build_camera_calibration(lidar2ego=lidar2ego)
+
+    def load_data(self, points, imgs):
+        n_src = len(getattr(self.point_feature_encoder, "src_feature_list", [])) or points.shape[1]
+        if points.shape[1] < n_src:
+            pad = np.zeros((points.shape[0], n_src - points.shape[1]), dtype=np.float32)
+            points = np.hstack([points, pad])
+        elif points.shape[1] > n_src:
+            points = points[:, :n_src]
+        self._points = np.ascontiguousarray(points, dtype=np.float32)
+        self._imgs = imgs
+
+    def _crop_images(self, pil_imgs, ori_shape):
+        """Test-time branch of NuScenesDataset.crop_image."""
+        W, H = ori_shape
+        img_cfg = self.dataset_cfg.get("IMAGE", None)
+        if img_cfg is None:
+            fH, fW, resize = H, W, 1.0
+        else:
+            fH, fW = img_cfg.FINAL_DIM
+            resize = float(np.mean(img_cfg.RESIZE_LIM_TEST))
+        newW, newH = int(W * resize), int(H * resize)
+        crop_h = newH - fH
+        crop_w = int(max(0, newW - fW) / 2)
+        crop = (crop_w, crop_h, crop_w + fW, crop_h + fH)
+
+        out, infos = [], []
+        for img in pil_imgs:
+            out.append(img.resize((newW, newH)).crop(crop))
+            infos.append([resize, crop, False, 0])
+        return out, infos
+
+    def __getitem__(self, index):
+        pil = [Image.fromarray(np.ascontiguousarray(im)) for im in self._imgs]
+        ori_shape = pil[0].size                              # (W, H)
+        cropped, infos = self._crop_images(pil, ori_shape)
+        c = self._calib
         data_dict = {
             "points": self._points,
             "frame_id": 0,
-            "camera_imgs": self._camera_imgs,            
-            "camera_intrinsics": self._camera_intrinsics,
-            "camera2lidar": self._camera2lidar           
+            "camera_imgs": cropped,
+            "ori_shape": ori_shape,
+            "img_process_infos": infos,
+            "camera_intrinsics": c["camera_intrinsics"],
+            "camera2lidar": c["camera2lidar"],
+            "lidar2camera": c["lidar2camera"],
+            "lidar2image": c["lidar2image"],
+            "camera2ego": c["camera2ego"],
+            "lidar_aug_matrix": np.eye(4, dtype=np.float32)
         }
         return self.prepare_data(data_dict=data_dict)
 
-    def load_data(self, points, imgs):
-        self._points = points
-        self._camera_imgs = imgs
-        self._camera_intrinsics = hp.intrinsics
-        self._camera2lidar = hp.extrinsics
 
 class OpenPCDetDetector:
     def __init__(self, cfg_file: str = hp.OPENPCDET_CFG_FILE, ckpt_file: str = hp.OPENPCDET_CKPT_FILE,
@@ -59,11 +105,7 @@ class OpenPCDetDetector:
             cfg_from_yaml_file(cfg_file, cfg)
         finally:
             os.chdir(prev_cwd)
-        print("starting the detector")
-        print("OPENPCDET_CFG_FILE: ",hp.OPENPCDET_CFG_FILE)
-        print("OPENPCDET_CKPT_FILE: ",hp.OPENPCDET_CKPT_FILE)
-        print("OPENPCDET_DEVICE: ",hp.OPENPCDET_DEVICE)
-        print("OPENPCDET_TOOLS_DIR: ",hp.OPENPCDET_TOOLS_DIR)
+        _dbg("starting the detector | cfg:", cfg_file, "| ckpt:", ckpt_file, "| device:", device)
         self.class_names = cfg.CLASS_NAMES
         self.dataset = _SingleFrameDataset(dataset_cfg=cfg.DATA_CONFIG, class_names=self.class_names)
         self.model = build_network(model_cfg=cfg.MODEL, num_class=len(self.class_names), dataset=self.dataset)
@@ -73,16 +115,18 @@ class OpenPCDetDetector:
 
     @torch.no_grad()
     def infer(self, points_xyzi: np.ndarray, imgs: np.ndarray) -> list[dict]:
+        if imgs is None:
+            _dbg("no camera images, skipping inference")
+            return []
         self.dataset.load_data(points_xyzi.astype(np.float32), imgs)
         data_dict = self.dataset.collate_batch([self.dataset[0]])
         load_data_to_gpu(data_dict)
-        print("stated inference")
-        pred_dicts, k = self.model.forward(data_dict)
-        print("output : ", pred_dicts, " and ", k)
+        pred_dicts, _ = self.model.forward(data_dict)
         pred = pred_dicts[0]
         boxes = pred["pred_boxes"].cpu().numpy()
         scores = pred["pred_scores"].cpu().numpy()
         labels = pred["pred_labels"].cpu().numpy()
+        _dbg(f"inference done: {len(boxes)} raw boxes, max score "  f"{float(scores.max()) if len(scores) else 0.0:.3f}")
 
         results = []
         for box, score, label in zip(boxes, scores, labels):
@@ -95,51 +139,43 @@ class OpenPCDetDetector:
                 "length": float(box[3]), "width": float(box[4]), "height": float(box[5]),
                 "heading": float(box[6]), "vx": float(box[7]), "vy": float(box[8])
             }
-            if box.shape[0] >= 9:
-                entry["vx"], entry["vy"] = float(box[7]), float(box[8])
             results.append(entry)
         return results
 
 def ego_to_world_matrix(ego_state) -> np.ndarray:
     return np.array(carla.Transform(
         carla.Location(x=ego_state.x, y=ego_state.y, z=ego_state.z),
-        carla.Rotation(pitch=math.degrees(ego_state.pitch_rad),
-                        yaw=math.degrees(ego_state.yaw_rad),
-                        roll=math.degrees(ego_state.roll_rad))).get_matrix())
-
-def _points_in_rotated_box(points_xyz: np.ndarray, center_x: float, center_y: float, center_z: float,
-                            length: float, width: float, height: float, yaw_deg: float, margin: float = 0.1) -> np.ndarray:
-    boxes = np.array([[center_x, center_y, center_z, length + (margin * 2), width + (margin * 2), height + (margin * 2), np.deg2rad(yaw_deg)]])
-    points_tensor = torch.from_numpy(points_xyz).float()
-    boxes_tensor = torch.from_numpy(boxes).float()
-    box_point_masks = roiaware_pool3d_utils.points_in_boxes_cpu(boxes_tensor, points_tensor)
-    return box_point_masks[0].numpy() > 0
+        carla.Rotation(pitch=math.degrees(ego_state.pitch_rad), yaw=math.degrees(ego_state.yaw_rad),
+                       roll=math.degrees(ego_state.roll_rad))).get_matrix())
 
 def _match_radar_points(radar_points: np.ndarray, center_x: float, center_y: float, center_z: float,
-                         length: float, width: float, height: float, yaw_deg: float, margin: float = 1.0) -> np.ndarray:
+                        length: float, width: float, height: float, yaw_deg: float, margin: float = 1.0) -> np.ndarray:
     if not radar_points.size:
         return np.array([])
     min_x, max_x = center_x - length / 2 - margin, center_x + length / 2 + margin
     min_y, max_y = center_y - width / 2 - margin, center_y + width / 2 + margin
     min_z, max_z = center_z - height / 2 - margin, center_z + height / 2 + margin
     coarse_mask = (radar_points[:, 0] >= min_x) & (radar_points[:, 0] <= max_x) & \
-        (radar_points[:, 1] >= min_y) & (radar_points[:, 1] <= max_y) &\
-        (radar_points[:, 2] >= min_z) & (radar_points[:, 2] <= max_z)
+                  (radar_points[:, 1] >= min_y) & (radar_points[:, 1] <= max_y) & \
+                  (radar_points[:, 2] >= min_z) & (radar_points[:, 2] <= max_z)
     candidate_points = radar_points[coarse_mask]
     if len(candidate_points) == 0:
         return np.array([])
-    inside = _points_in_rotated_box(candidate_points[:, :3], center_x, center_y, center_z, length, width, height, yaw_deg, margin)
+    inside = points_in_rotated_box(candidate_points[:, :3], center_x, center_y, center_z,
+                                    length, width, height, yaw_deg, margin)
     return candidate_points[inside]
+
 
 def _vertical_overlap(z_a: float, h_a: float, z_b: float, h_b: float) -> bool:
     a_lo, a_hi = z_a - h_a / 2.0, z_a + h_a / 2.0
     b_lo, b_hi = z_b - h_b / 2.0, z_b + h_b / 2.0
     return a_lo <= b_hi and b_lo <= a_hi
 
-def time_to_road_departure(carla_map: carla.Map, ego: Ego3DState,
-                            dims: np.array, dt: float = hp.ROAD_EXIT_STEP_S,
-                            max_time: float = hp.ROAD_EXIT_LOOKAHEAD_S) -> float:    
-    x = np.array([ego.x, ego.y, ego.vx_world, ego.vy_world, ego.long_accel, ego.lat_accel, ego.yaw, ego.yaw_rate, dims[0],dims[1], ego.z, dims[2]])
+
+def time_to_road_departure(carla_map: carla.Map, ego: Ego3DState, dims: np.array, dt: float = hp.ROAD_EXIT_STEP_S,
+                           max_time: float = hp.ROAD_EXIT_LOOKAHEAD_S) -> float:
+    x = np.array([ego.x, ego.y, ego.vx_world, ego.vy_world, ego.long_accel, ego.lat_accel,
+                  ego.yaw, ego.yaw_rate, dims[0], dims[1], ego.z, dims[2]])
 
     steps = max(1, int(max_time / dt))
     for i in range(steps + 1):
@@ -148,51 +184,68 @@ def time_to_road_departure(carla_map: carla.Map, ego: Ego3DState,
             x = ObjectUKF.fx(x, dt)
 
         px, py, pz = x[0], x[1], x[9]
-        wp = carla_map.get_waypoint(carla.Location(x=px, y=py, z=pz),
-                                     project_to_road=False, lane_type=carla.LaneType.Driving)
+        wp = carla_map.get_waypoint(carla.Location(x=px, y=py, z=pz), project_to_road=False, lane_type=carla.LaneType.Driving)
         if wp is None:
             return -1.0 if i == 0 else t
 
         wp_loc = wp.transform.location
         right = wp.transform.get_right_vector()
         lateral = (px - wp_loc.x) * right.x + (py - wp_loc.y) * right.y
-        if abs(lateral) + dims[1]/2 > wp.lane_width / 2.0:
+        if abs(lateral) + dims[1] / 2 > wp.lane_width / 2.0:
             return -1.0 if i == 0 else t
 
         x[9] = wp_loc.z
 
     return float('inf')
 
+
 def build_bbs(half_length, half_width, state: CalculatedState, master_cloud: np.ndarray,
               radar_points, cameras, step, tracker: UKFBoundingBoxTracker,
-              detector: OpenPCDetDetector) -> list[trackedbb]:
-    
+              detector: OpenPCDetDetector, lidar_offset: np.ndarray = None):
+    if lidar_offset is None:
+        lidar_offset = np.zeros(3)
+
     obstacle_mask = (master_cloud[:, 0] > -hp.MAX_LOCKBACK) & (master_cloud[:, 0] < hp.MAX_LOOKFORWARD) & \
-        (np.abs(master_cloud[:, 1]) < hp.MAX_LOOKSIDEWAYS) & (master_cloud[:, 2] > -hp.GROUND_CLEARANCE) & \
-        ((np.abs(master_cloud[:, 0]) > half_length) | (np.abs(master_cloud[:, 1]) > half_width))
+                    (np.abs(master_cloud[:, 1]) < hp.MAX_LOOKSIDEWAYS) & (master_cloud[:, 2] > -hp.GROUND_CLEARANCE) & \
+                    ((np.abs(master_cloud[:, 0]) > half_length) | (np.abs(master_cloud[:, 1]) > half_width))
     obstacle_pts = master_cloud[obstacle_mask]
 
     if len(obstacle_pts) < hp.MIN_NUMBER_LIDAR_HITS:
         moving_tracks = tracker.update([], step)
         return [t.get_all_data() for t in moving_tracks], obstacle_pts
 
-    T = ego_to_world_matrix(state.ego_state)    
+    T = ego_to_world_matrix(state.ego_state)
+    R = T[:3, :3]
     network_detections: list[bev_Det] = []
     network_static: list[trackedbb] = []
-    boxes = detector.infer(obstacle_pts, cameras)
-    for box in boxes:
-        print("detected box : ", box)
+    for box in detector.infer(obstacle_pts, cameras):
+        _dbg("detected box:", box)
         class_name = box["class_name"].strip().lower()
-        if class_name not in hp.OPENPCDET_DYNAMIC_CLASSES and class_name not in hp.OPENPCDET_STATIC_CLASSES:  continue 
-        center_h = np.array([box["x"], box["y"], box["z"], 1.0])
-        center_global = T @ center_h
-        heading_dir_global = T[:3, :3] @ np.array(
-            [math.cos(box["heading"]), math.sin(box["heading"]), 0.0])
+        if class_name not in hp.OPENPCDET_DYNAMIC_CLASSES and class_name not in hp.OPENPCDET_STATIC_CLASSES:
+            continue
+
+        if FIX_FRAMES:
+            local = np.array([box["x"] + lidar_offset[0], -box["y"] + lidar_offset[1],
+                              box["z"] + lidar_offset[2], 1.0])
+            heading = -box["heading"]
+            vel_local = np.array([box["vx"], -box["vy"], 0.0])
+        else:
+            local = np.array([box["x"], box["y"], box["z"], 1.0])
+            heading = box["heading"]
+            vel_local = np.array([box["vx"], box["vy"], 0.0])
+
+        center_global = T @ local
+        heading_dir_global = R @ np.array([math.cos(heading), math.sin(heading), 0.0])
+        vel_global = R @ vel_local if FIX_FRAMES else vel_local
+
         center_x, center_y, center_z = float(center_global[0]), float(center_global[1]), float(center_global[2])
         yaw_deg = math.degrees(math.atan2(heading_dir_global[1], heading_dir_global[0]))
-        length, width, height, vx, vy = box["length"], box["width"], box["height"], box["vx"], box["vy"]
+        length, width, height = box["length"], box["width"], box["height"]
+        vx, vy = float(vel_global[0]), float(vel_global[1])
+
         if class_name in hp.OPENPCDET_DYNAMIC_CLASSES:
-            matched_radars = _match_radar_points(radar_points, center_x, center_y, center_z, length, width, height, yaw_deg)
+            matched_radars = _match_radar_points(radar_points, center_x, center_y, center_z,
+                                                 length, width, height, yaw_deg)
             network_detections.append(bev_Det(
                 center_x=center_x, center_y=center_y, length=length, width=width, vx=vx, vy=vy,
                 yaw=yaw_deg, step=step, center_z=center_z, height=height, radar_points=matched_radars
@@ -212,56 +265,51 @@ def build_bbs(half_length, half_width, state: CalculatedState, master_cloud: np.
     tracked.extend(network_static)
     return tracked, obstacle_pts
 
-def process_radar(state: CalculatedState, radar_data: carla.RadarMeasurement, sensor_transform: np.ndarray) -> np.ndarray:
-    if GameTime.get_time() < 0.5:
+
+def radar_measurement_to_array(radar_data) -> np.ndarray:
+    if radar_data is None:
+        return np.empty((0, 4), dtype=np.float32)
+    if isinstance(radar_data, np.ndarray):
+        return radar_data.astype(np.float32).reshape(-1, 4)
+    arr = np.array([[d.depth, d.azimuth, d.altitude, d.velocity] for d in radar_data], dtype=np.float32)
+    return arr.reshape(-1, 4)
+
+
+def process_radar(state: CalculatedState, radar_arr: np.ndarray, sensor_transform: np.ndarray) -> np.ndarray:
+    if GameTime.get_time() < 0.5 or radar_arr.shape[0] == 0:
         return np.empty((0, 7), dtype=np.float32)
     e = state.ego_state
-    T_ego_to_world = ego_to_world_matrix(state.ego_state)
-    T_sensor_to_world = T_ego_to_world @ sensor_transform
+    T_sensor_to_world = ego_to_world_matrix(e) @ sensor_transform
     R_sensor_to_world = T_sensor_to_world[:3, :3]
-    v_ego_world = np.array([e.vx_world, e.vy_world, 0], dtype=np.float32)
+    v_ego_world = np.array([e.vx_world, e.vy_world, 0.0], dtype=np.float64)
 
-    parsed_points = []
-    for det in radar_data:
-        r, az, alt, v_r = det.depth, det.azimuth, det.altitude, det.velocity
-        cos_alt = math.cos(alt)
+    r, az, alt, v_r = (radar_arr[:, i].astype(np.float64) for i in range(4))
+    cos_alt = np.cos(alt)
+    u_sensor = np.stack([cos_alt * np.cos(az), cos_alt * np.sin(az), np.sin(alt)], axis=1)   # (M, 3)
+    p_sensor = np.hstack([u_sensor * r[:, None], np.ones((len(r), 1))])                       # (M, 4)
+    p_world = (T_sensor_to_world @ p_sensor.T).T[:, :3]
+    u_world = u_sensor @ R_sensor_to_world.T
+    v_r_abs = v_r + u_world @ v_ego_world
+    return np.column_stack([p_world, v_r_abs, u_world]).astype(np.float32)
 
-        p_sensor = np.array([r * cos_alt * math.cos(az), r * cos_alt * math.sin(az), r * math.sin(alt), 1.0], dtype=np.float32)
-        p_world = (T_sensor_to_world @ p_sensor)[:3]
-
-        u_sensor = np.array([cos_alt * math.cos(az), cos_alt * math.sin(az), math.sin(alt)], dtype=np.float32)
-        u_world = R_sensor_to_world @ u_sensor
-
-        v_ego_radial = np.dot(v_ego_world, u_world)
-        v_r_abs = v_r + v_ego_radial
-        parsed_points.append([p_world[0], p_world[1], p_world[2], v_r_abs, u_world[0], u_world[1], u_world[2]])
-    if not parsed_points:
-        return np.empty((0, 7), dtype=np.float32)
-    return np.array(parsed_points, dtype=np.float32)
 
 def get_lidar_radar_info(state: CalculatedState, lidar_stream, radar_streams, cameras, step,
-                        radar_transforms, half_length, half_width, tracker, carla_map: carla.Map,
-                        detector: OpenPCDetDetector, half_height: float = hp.DEFAULT_EGO_HALF_HEIGHT):
-    radar_points = np.ndarray((0, 7))
-    for sensor_name, radar_data in radar_streams.items():
-        radar_points = np.vstack([radar_points, process_radar(state, radar_data, radar_transforms[sensor_name])])
+                         radar_transforms, half_length, half_width, tracker, carla_map: carla.Map,
+                         detector: OpenPCDetDetector, half_height: float = hp.DEFAULT_EGO_HALF_HEIGHT,
+                         lidar_offset: np.ndarray = None):
+    radar_points = np.empty((0, 7), dtype=np.float32)
+    for sensor_name, radar_arr in radar_streams.items():
+        radar_points = np.vstack([radar_points, process_radar(state, radar_arr, radar_transforms[sensor_name])])
 
-    # pts = np.ndarray((0, 4))
-    #pts_sensor = np.reshape(lidar_stream, (int(len(lidar_stream) / 4), 4))
-    pts_sensor = lidar_stream
+    pts_sensor = np.asarray(lidar_stream, dtype=np.float32).reshape(-1, 4)
     ranges = np.linalg.norm(pts_sensor[:, :3], axis=1)
-    pts_sensor = pts_sensor[ranges>hp.MIN_VALID_RANGE_M]
-    pts_sensor[:, 1] = -pts_sensor[:, 1]
-    #num_pts = len(pts_sensor)
-    #xyz_homo = np.hstack((pts_sensor[:, :3], np.ones((num_pts, 1))))
-    #xyz_ego = (lidar_transform @ xyz_homo.T).T[:, :3]
-    #pts = np.vstack((pts, np.column_stack((xyz_ego, pts_sensor[:, 3]))))
+    pts_sensor = pts_sensor[ranges > hp.MIN_VALID_RANGE_M]
+    pts_sensor[:, 1] = -pts_sensor[:, 1]          # CARLA (left-handed) -> right-handed, y left
 
-    #print("points : ",len(pts),flush=True)
-    
     tracked, pts = build_bbs(half_length=half_length, half_width=half_width,
-                    state=state, master_cloud=pts_sensor, radar_points=radar_points,
-                    cameras=cameras, step=step, tracker=tracker, detector=detector)
+                             state=state, master_cloud=pts_sensor, radar_points=radar_points,
+                             cameras=cameras, step=step, tracker=tracker, detector=detector,
+                             lidar_offset=lidar_offset)
 
     if state.ego_state.speed > 1e-3:
         hx = state.ego_state.vx_world / state.ego_state.speed
@@ -269,7 +317,8 @@ def get_lidar_radar_info(state: CalculatedState, lidar_stream, radar_streams, ca
     else:
         hx = math.cos(state.ego_state.yaw)
         hy = math.sin(state.ego_state.yaw)
-    ego_ttc = np.array([state.ego_state.x, state.ego_state.y, state.ego_state.vx_world, state.ego_state.vy_world, hx, hy, half_length * 2, half_width * 2])
+    ego_ttc = np.array([state.ego_state.x, state.ego_state.y, state.ego_state.vx_world,
+                        state.ego_state.vy_world, hx, hy, half_length * 2, half_width * 2])
 
     obs_ttc = []
     for track in tracked:
@@ -289,7 +338,7 @@ def get_lidar_radar_info(state: CalculatedState, lidar_stream, radar_streams, ca
         obs_ttc = np.array(obs_ttc)
         ttcs = TTC(ego_ttc, obs_ttc)
 
-        ego_z_center = state.ego_state.z + half_height 
+        ego_z_center = state.ego_state.z + half_height
         ego_h = half_height * 2.0
         for i, track in enumerate(tracked):
             if ttcs[i] == -1 and not _vertical_overlap(ego_z_center, ego_h, track.z, track.height):
@@ -298,11 +347,12 @@ def get_lidar_radar_info(state: CalculatedState, lidar_stream, radar_streams, ca
         ttcs = np.array([])
 
     road_exit_ttc = time_to_road_departure(carla_map, state.ego_state,
-                                np.array([half_length*2, half_width*2, half_height*2]))
+                                           np.array([half_length * 2, half_width * 2, half_height * 2]))
     ttcs = np.append(ttcs, road_exit_ttc)
     min_ttc = float(np.min(ttcs))
 
     return tracked, ttcs, min_ttc, pts
+
 
 class BBsWorker(threading.Thread):
     def __init__(self, lidar_transform, radar_transforms, half_length, half_width,
@@ -312,28 +362,32 @@ class BBsWorker(threading.Thread):
         try:
             self.detector = OpenPCDetDetector()
         except Exception as exc:
-            print(f"OpenPCDetDetector unavailable: {exc}", flush=True)
-            exit(1)
+            traceback.print_exc()
+            sys.stderr.flush()
+            raise RuntimeError(f"OpenPCDetDetector unavailable: {exc}") from exc
         self.input_queue = queue.Queue(maxsize=1)
         self.output_queue = queue.Queue()
         self.running = True
         self.daemon = True
         self.lidar_transform = lidar_transform
+        self.lidar_offset = lidar_offset(lidar_transform)
+        self.detector.dataset.set_lidar_to_ego(lidar2ego_from_offset(*self.lidar_offset))
         self.radar_transforms = radar_transforms
         self.half_length = half_length
         self.half_width = half_width
         self.half_height = half_height
         self.carla_map = CarlaDataProvider.get_map()
 
-    def push_frame(self, state, lidar_np: np.ndarray, radar_dict: dict, cameras: np.array, step):
+    def push_frame(self, state, lidar_np: np.ndarray, radar_dict: dict, cameras: np.ndarray, step):
+        radar_arrays = {name: radar_measurement_to_array(m) for name, m in radar_dict.items()}
         if self.input_queue.full():
             try:
                 self.input_queue.get_nowait()
             except queue.Empty:
                 pass
-        self.input_queue.put((state, lidar_np, radar_dict, cameras, step))
+        self.input_queue.put((state, lidar_np, radar_arrays, cameras, step))
 
-    def get_latest_result(self) -> Optional[Tuple[list[trackedbb], np.ndarray, float]]:
+    def get_latest_result(self) -> Optional[Tuple[list[trackedbb], np.ndarray, float, np.ndarray]]:
         latest = None
         while not self.output_queue.empty():
             try:
@@ -350,10 +404,10 @@ class BBsWorker(threading.Thread):
                 continue
             try:
                 result = get_lidar_radar_info(state, lidar_np, radar_dict, cameras, step,
-                                            self.radar_transforms, self.half_length, self.half_width,
-                                            self.tracker, self.carla_map, self.detector, self.half_height)
+                                              self.radar_transforms, self.half_length, self.half_width,
+                                              self.tracker, self.carla_map, self.detector,
+                                              self.half_height, self.lidar_offset)
             except Exception:
-                import traceback
                 traceback.print_exc()
                 sys.stderr.flush()
                 continue
