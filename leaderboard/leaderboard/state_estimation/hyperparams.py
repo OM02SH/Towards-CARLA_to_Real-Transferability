@@ -9,16 +9,16 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 ################ Ego state ##################
 G = 9.81
 
-R_GNSS = np.diag([2.5**2, 2.5**2, 1.0**2])
+R_GNSS = np.diag([1.5**2, 1.5**2, 1.0**2])
 SIGMA_COMPASS = math.radians(5.0)
 R_COMPASS = np.array([[SIGMA_COMPASS**2]])
-R_WHEEL = np.diag([0.25**2, 0.10**2])
+R_WHEEL = np.diag([0.2**2, 0.10**2])
 
-SIGMA_GRAVITY_DIRECTION = 0.2
+SIGMA_GRAVITY_DIRECTION = 0.15
 R_GRAVITY = np.eye(3) * SIGMA_GRAVITY_DIRECTION**2
 
 SIGMA_GYRO = math.radians(0.5)       
-SIGMA_ACCEL = 0.7                    
+SIGMA_ACCEL = 0.4 
 SIGMA_GYRO_BIAS_RW = math.radians(0.01)
 SIGMA_ACCEL_BIAS_RW = 0.01
 SIGMA_WHEEL_BIAS_RW = 0.03           
@@ -31,7 +31,7 @@ MAX_HISTORY = 20
 MIN_HISTORY = 5
 R_GNSS_VEL = np.diag([1.5**2, 1.5**2, 1.5**2])
 
-SIGMA_SLAM_POS = 0.05
+SIGMA_SLAM_POS = 0.04
 SIGMA_SLAM_ATT = math.radians(1.0)
 
 R_SLAM_POS = np.eye(3) * SIGMA_SLAM_POS**2

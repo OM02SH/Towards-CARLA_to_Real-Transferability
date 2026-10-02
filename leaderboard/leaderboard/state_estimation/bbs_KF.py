@@ -173,6 +173,7 @@ def build_bbs(half_length, half_width, state: CalculatedState, master_cloud: np.
     network_detections: list[bev_Det] = []
     network_static: list[trackedbb] = []
     for box in detector.infer(obstacle_pts, cameras):
+        print("detected box : ", box)
         class_name = box["class_name"].strip().lower()
         if class_name not in hp.OPENPCDET_DYNAMIC_CLASSES and class_name not in hp.OPENPCDET_STATIC_CLASSES:  
             continue 
