@@ -44,6 +44,19 @@ class Box:
     tag: str = ""            
     frame_id: str = ""          
 
+    @classmethod
+    def from_geometry(cls, x: float, y: float, z: float, length: float, width: float,
+                       height: float, yaw: float, vx: float = float("nan"),
+                       vy: float = float("nan"), tag: str = "", score: float = 1.0,
+                       frame_id: str = "") -> "Box":
+        return cls(np.array([x, y, z], dtype=float), np.array([length, width, height], dtype=float),
+                    float(yaw), np.array([vx, vy], dtype=float), tag, score, frame_id)
+ 
+    @classmethod
+    def from_trackedbb(cls, tb, frame_id: str = "", score: float = 1.0) -> "Box":
+        return cls.from_geometry(tb.px, tb.py, tb.z, tb.len, tb.wid, tb.height, tb.yaw,
+                                  vx=tb.vx, vy=tb.vy, score=score, frame_id=frame_id)
+ 
 @dataclass
 class trackedbb:
     px: float
