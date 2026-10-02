@@ -218,32 +218,40 @@ class VehicleSensorSuite:
         self.data_queues.clear()
 
 class SensorDataParser:
+    YOLO_CAMS = ("cam_00", "cam_01")
+
     def process_all_sensors(self, raw_data_dict: dict) -> dict:
         processed_data = {
             "lidar": None,
             "cameras": {},
-            "yolo_cameras": np.array,
+            "yolo_cameras": None,
             "radars": {},
             "imu": None,
             "gnss": None
         }
+        yolo_frames = {}
         for name, raw_measurement in raw_data_dict.items():
-            if name.startswith("lidar"):
+            if raw_measurement is None:
+                continue
+            elif name.startswith("lidar"):
                 processed_data["lidar"] = raw_measurement
             elif name.startswith("cam_"):
                 img_bgra = np.frombuffer(raw_measurement.raw_data, dtype=np.uint8)
-                img_bgra = img_bgra.reshape((raw_measurement.height, raw_measurement.width, 4))                
-                img_rgb = img_bgra[:, :, :3][:, :, ::-1]                
-                img_resized = cv2.resize(img_rgb, (704, 192))
-                processed_data["cameras"][name] = img_resized
-                if name in ["cam_00", "cam_01"]:
-                    processed_data["yolo_cameras"].append(img_rgb)
+                img_bgra = img_bgra.reshape((raw_measurement.height, raw_measurement.width, 4))
+                img_bgr = img_bgra[:, :, :3]
+                img_rgb = np.ascontiguousarray(img_bgr[:, :, ::-1])
+                processed_data["cameras"][name] = cv2.resize(img_rgb, (704, 192))
+                if name in self.YOLO_CAMS:
+                    yolo_frames[name] = img_bgr
             elif name.startswith("radar_"):
                 processed_data["radars"][name] = raw_measurement
             elif name == "imu":
                 processed_data["imu"] = raw_measurement
             elif name == "gnss":
                 processed_data["gnss"] = raw_measurement
+        frames = [yolo_frames[n] for n in self.YOLO_CAMS if n in yolo_frames]
+        if frames:
+            processed_data["yolo_camera"] = np.ascontiguousarray(np.vstack(frames))
         if len(processed_data["cameras"]) == 6:
             cam_order = ["cam_00", "cam_01", "cam_02", "cam_03", "cam_04", "cam_05"]
             stacked_imgs = np.stack([processed_data["cameras"][cam] for cam in cam_order], axis=0)

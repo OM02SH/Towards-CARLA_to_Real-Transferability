@@ -7,7 +7,7 @@ import leaderboard.state_estimation.hyperparams as hp
 import os
 
 class TrafficLightWorker:
-    def __init__(self, conf=0.4, device="gpu"):
+    def __init__(self, conf=0.4, device="cuda:0"):
         self._model = YOLO(hp.YOLO_MODEL_PATH)
         self._conf = conf
         self._device = device
@@ -28,8 +28,8 @@ class TrafficLightWorker:
         if self._thread is not None:
             self._thread.join(timeout=2.0)
 
-    def push_frame(self, carla_image):
-        frame = self._carla_image_to_rgb(carla_image)
+    def push_frame(self, frame):
+        #frame = self._carla_image_to_rgb(carla_image)
         self._drop_and_put(self._in_queue, frame)
 
     def light_state(self):
@@ -58,7 +58,12 @@ class TrafficLightWorker:
                 frame = self._in_queue.get(timeout=0.5)
             except queue.Empty:
                 continue
-            result = self._infer(frame)
+            try:
+                result = self._infer(frame)
+            except Exception:
+                import traceback; traceback.print_exc()
+                continue
+            self._drop_and_put(self._out_queue, result)
             self._drop_and_put(self._out_queue, result)
 
     def _infer(self, frame):

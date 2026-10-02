@@ -121,14 +121,15 @@ class CarlaStateEstimatorEngine:
         lidar_data = sensors_data["lidar"]
         radar_datas = sensors_data["radars"]
         cameras = sensors_data["stacked_cameras"]
-        if (imu_data == None or gnss_data == None or lidar_data == None or radar_datas == None):
-            raise ValueError("All sensor data (IMU, GNSS, LiDAR, RADAR) must be provided for computation.")
+        frame = sensors_data["yolo_camera"]
+        if (imu_data == None):
+            raise ValueError("Sensor data IMU must be provided for computation.")
         state = CalculatedState()
         self.speed_limit = vehicle.get_speed_limit()
         state.ego_state = self.ekf.compute(dt, vehicle, imu_data, gnss_data, lidar_data, step)
         self.tracker.push_frame(state,lidar_data,radar_datas,cameras,step)
         state.detected_objects = self.tracker.get_latest_result()
-        self.tlw.push_frame(sensors_data["yolo_cameras"])
+        if frame is not None: self.tlw.push_frame(frame)
         self.state.light = self.tlw.light_state()
         self.get_rest_info(state)
         self.state = state
