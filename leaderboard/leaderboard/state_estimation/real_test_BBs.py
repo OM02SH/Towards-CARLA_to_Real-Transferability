@@ -73,7 +73,7 @@ def evaluate_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List
             pred = pred_frames.get(frame_id, [])
             if max_range is not None:
                 gt = _filter_range(gt, max_range)
-                #pred = _filter_range(pred, max_range)
+                pred = _filter_range(pred, max_range)
             pairs, _, _ = greedy_match(gt, pred, thresh)
             n_gt += len(gt)
             n_pred += len(pred)
