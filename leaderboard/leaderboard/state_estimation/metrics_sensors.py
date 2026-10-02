@@ -256,12 +256,12 @@ class SensorDataParser:
             cam_order = ["cam_00", "cam_01", "cam_02", "cam_03", "cam_04", "cam_05"]
             stacked_imgs = np.stack([processed_data["cameras"][cam] for cam in cam_order], axis=0)
             processed_data["stacked_cameras"] = stacked_imgs
-            for name in  ["cam_00", "cam_01", "cam_02", "cam_03", "cam_04", "cam_05"]:
+            """for name in  ["cam_00", "cam_01", "cam_02", "cam_03", "cam_04", "cam_05"]:
                 save_path = f"/app/output/{name}_debug.png"
                 img_to_save_bgr = cv2.cvtColor(processed_data["cameras"][name], cv2.COLOR_RGB2BGR)
                 success = cv2.imwrite(save_path, img_to_save_bgr)
                 if not success:
                     print(f"FAILED to write image to {save_path}")
                 else:
-                    print("succcess saved")
+                    print("succcess saved")"""
         return processed_data
