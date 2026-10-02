@@ -18,7 +18,7 @@ import PIL
 import torch
 from beartype import beartype
 from leaderboard.autoagents import autonomous_agent2 as autonomous_agent
-#from scenario_runner.srunner.scenariomanager.carla_data_provider import CarlaDataProvider
+#from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 
 # Add parent directory to path to allow imports from sibling packages
 _current_dir = Path(__file__).resolve().parent

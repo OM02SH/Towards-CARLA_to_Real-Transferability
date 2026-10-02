@@ -12,7 +12,7 @@ from __future__ import print_function
 from enum import Enum
 
 import carla
-from scenario_runner.srunner.scenariomanager.timer import GameTime
+from srunner.scenariomanager.timer import GameTime
 
 from leaderboard.utils.route_manipulation import downsample_route
 from leaderboard.envs.sensor_interface import SensorInterface
@@ -138,7 +138,7 @@ class AutonomousAgent(object):
     
     def get_hero(self):
         hero_actor = None
-        from scenario_runner.srunner.scenariomanager.carla_data_provider import CarlaDataProvider
+        from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
         for actor in CarlaDataProvider.get_world().get_actors():
             if 'role_name' in actor.attributes and actor.attributes['role_name'] == 'hero':
                 hero_actor = actor
