@@ -260,7 +260,7 @@ def build_bbs(half_length, half_width, state: CalculatedState, master_cloud: np.
                 z=center_z, height=height,
                 pos_history=[], slip_angle_deg=0.0
             ))
-
+    print("detections: ", len(network_detections))
     moving_tracks = tracker.update(network_detections, step)
     tracked: list[trackedbb] = [t.get_all_data() for t in moving_tracks]
     tracked.extend(network_static)
