@@ -409,6 +409,7 @@ class BBsWorker(threading.Thread):
                                               self.radar_transforms, self.half_length, self.half_width,
                                               self.tracker, self.carla_map, self.detector,
                                               self.half_height, self.lidar_offset)
+                print("final final resutl", result)
             except Exception:
                 traceback.print_exc()
                 sys.stderr.flush()
