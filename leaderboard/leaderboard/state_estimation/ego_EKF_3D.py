@@ -333,7 +333,7 @@ class EgoErrorStateEKF3D:
             mx0, my0 = _mercator(ref.latitude, ref.longitude, scale)
             return carla.Location(x=mx - mx0, y=-(my - my0), z=alt)
 
-        loc = geolocation_to_location(self.map, gnss_data.latitude, gnss_data.longitude, gnss_data.altitude)
+        loc = geolocation_to_location(gnss_data.latitude, gnss_data.longitude, gnss_data.altitude)
         self.history_gnss.append((loc.x, -loc.y, loc.z,step))
         self.update_error_state(
             z=np.array([loc.x, -loc.y, loc.z], dtype=float),
