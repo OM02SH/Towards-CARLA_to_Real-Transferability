@@ -8,7 +8,7 @@ import os
 
 class TrafficLightWorker:
     def __init__(self, conf=0.4, device="gpu"):
-        self._model = YOLO(os.path.join(_HERE, "best.pt"))
+        self._model = YOLO(hp.YOLO_MODEL_PATH)
         self._conf = conf
         self._device = device
         self._in_queue = queue.Queue(maxsize=1)

@@ -3,6 +3,8 @@ import torch
 import numpy as np
 import math
 
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+
 ################ Ego state ##################
 G = 9.81
 
@@ -70,7 +72,6 @@ DEFAULT_EGO_HALF_HEIGHT = 0.9
 ROAD_EXIT_LOOKAHEAD_S = 6.0
 ROAD_EXIT_STEP_S = 0.05
 
-_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 OPENPCDET_CFG_FILE = os.path.join(_THIS_DIR, "bevfusion_carlaocc.yaml") 
 OPENPCDET_CKPT_FILE = os.path.join(_THIS_DIR, "bevfusion.pth") 
 OPENPCDET_TOOLS_DIR = os.path.join(_THIS_DIR, "../../../pcdet") 
@@ -110,6 +111,7 @@ GO_CLASS_ID = 1
 EXPECTED_ASPECT_RATIO = 0.273
 ASPECT_RATIO_TOLERANCE = 0.20
 HOLD_MAX_CALLS = 10
+YOLO_MODEL_PATH = os.path.join(_THIS_DIR, "best.pt")
 
 ############# Ego state test ###############
 POSITION_FIELDS = ("x", "y", "z")
