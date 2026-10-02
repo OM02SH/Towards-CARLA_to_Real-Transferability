@@ -441,7 +441,10 @@ class PCLA():
 
         # Ensure sensors are created in the world
         self.world.tick()
-        CarlaDataProvider.register_actor(self.vehicle)
+        try:
+            CarlaDataProvider.register_actor(self.vehicle)
+        except KeyError:
+            pass  # already registered by RouteScenario
     # ==========================================================
     # === Latency Helper Methods ===
     # ==========================================================
