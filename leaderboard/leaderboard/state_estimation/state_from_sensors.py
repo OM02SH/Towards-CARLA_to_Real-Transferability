@@ -52,7 +52,7 @@ class CarlaStateEstimatorEngine:
         self.ego_evaluator = EgoStateOnlineEvaluator(world, vehicle.id)
         self.tlw.start()
         self.tracker.start()
-
+        self._last_result = None
 
     def get_rest_info(self, state : CalculatedState):
         cr, sr = math.cos(state.ego_state.roll_rad), math.sin(state.ego_state.roll_rad)
@@ -152,5 +152,3 @@ class CarlaStateEstimatorEngine:
     @staticmethod
     def get_calculated_state() -> CalculatedState:
         return CarlaStateEstimatorEngine._last_state
-
-    
