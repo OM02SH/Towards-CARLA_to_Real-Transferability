@@ -288,7 +288,7 @@ class EgoErrorStateEKF3D:
 
     def h_H_gravity_direction(self) -> tuple[np.ndarray, np.ndarray]:
         H = np.zeros((3, STATE_SIZE), dtype=float)
-        v = -(quat_to_R(self.q).T @ np.array([0.0, 0.0, -G], dtype=float))
+        v = -(quat_to_R(self.q).T @ np.array([0.0, 0.0, -hp.G], dtype=float))
         norm_v = float(np.linalg.norm(v)) # should be always 9.81
         if norm_v < 1e-12: return (np.array([0.0, 0.0, 1.0], dtype=float), H)
         h_g = v / norm_v

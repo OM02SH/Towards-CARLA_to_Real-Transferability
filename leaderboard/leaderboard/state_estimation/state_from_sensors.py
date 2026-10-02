@@ -10,6 +10,7 @@ from leaderboard.state_estimation.bbs_KF import BBsWorker
 from leaderboard.state_estimation.real_test_BBs import OnlineEvaluator
 from leaderboard.state_estimation.traffic_light_worker import TrafficLightWorker
 from leaderboard.state_estimation.real_test_ego import EgoStateOnlineEvaluator
+import leaderboard.state_estimation.hyperparams as hp
 Gravity = 9.81
 min_valid_range_m = 0.5
 
@@ -144,10 +145,12 @@ class CarlaStateEstimatorEngine:
         type(self)._last_state = state
         self.ego_evaluator.add_frame(frame_id=str(step),ego_state=self.state.ego_state)
         self.ego_evaluator.print_report()
-        if pts is not None:
-            self.bbs_evaluator.add_frame(frame_id=str(step),lidar_points_ego=pts, track_bbs=state.detected_objects,
-                    ego_transform=carla.Transform(carla.Location(state.ego_state.x,state.ego_state.y,state.ego_state.z),
-                                        carla.Rotation(state.ego_state.pitch,state.ego_state.yaw,state.ego_state.roll)))
+        pts_sensor = np.reshape(lidar_data, (int(len(lidar_data) / 4), 4))
+        ranges = np.linalg.norm(pts_sensor[:, :3], axis=1)
+        pts_sensor = pts_sensor[ranges>hp.MIN_VALID_RANGE_M]
+        self.bbs_evaluator.add_frame(frame_id=str(step),lidar_points_ego=pts_sensor, track_bbs=state.detected_objects,
+                ego_transform=carla.Transform(carla.Location(state.ego_state.x,state.ego_state.y,state.ego_state.z),
+                                    carla.Rotation(state.ego_state.pitch,state.ego_state.yaw,state.ego_state.roll)))
         self.bbs_evaluator.print_report()
 
     @staticmethod
