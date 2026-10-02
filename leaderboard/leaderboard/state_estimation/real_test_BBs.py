@@ -5,7 +5,7 @@ import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
-from leaderboard.state_estimation.sensor_dataclasses import trackedbb, Box, StaticVehicleRef
+from leaderboard.state_estimation.sensor_dataclasses import trackedbb, Box, StaticVehicleRef, Ego3DState
 import numpy as np
 import carla
 import leaderboard.state_estimation.hyperparams as hp
@@ -73,7 +73,7 @@ def evaluate_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List
             pred = pred_frames.get(frame_id, [])
             if max_range is not None:
                 gt = _filter_range(gt, max_range)
-                pred = _filter_range(pred, max_range)
+                #pred = _filter_range(pred, max_range)
             pairs, _, _ = greedy_match(gt, pred, thresh)
             n_gt += len(gt)
             n_pred += len(pred)
@@ -123,6 +123,37 @@ def world_to_local(reference_transform: carla.Transform, world_xyz) -> np.ndarra
     M = np.asarray(reference_transform.get_inverse_matrix(), dtype=float)
     xyz = (world_xyz.x, world_xyz.y, world_xyz.z) if hasattr(world_xyz, "x") else world_xyz
     return _apply_matrix(M, xyz)
+
+def _ego_transform(ego_state: Ego3DState) -> carla.Transform:
+    return carla.Transform(
+        carla.Location(x=ego_state.x, y=ego_state.y, z=ego_state.z),
+        carla.Rotation(
+            pitch=math.degrees(ego_state.pitch_rad),
+            yaw=math.degrees(ego_state.yaw_rad),
+            roll=math.degrees(ego_state.roll_rad),
+        ),
+    )
+
+def global_boxes_to_ego(boxes: Sequence[Box], ego_state: Ego3DState) -> List[Box]:
+    ego_transform = _ego_transform(ego_state)
+    ego_yaw = ego_state.yaw_rad
+    cos_yaw, sin_yaw = math.cos(ego_yaw), math.sin(ego_yaw)
+    converted = []
+    for box in boxes:
+        velocity = box.velocity
+        velocity_ego = np.array([
+            cos_yaw * velocity[0] + sin_yaw * velocity[1],
+            -sin_yaw * velocity[0] + cos_yaw * velocity[1],
+        ])
+        converted.append(Box(
+            translation=world_to_local(ego_transform, box.translation),
+            size=box.size.copy(),
+            yaw=wrap_angle_rad(box.yaw - ego_yaw),
+            velocity=velocity_ego,
+            tag=box.tag,
+            frame_id=box.frame_id,
+        ))
+    return converted
 
 class CarlaGroundTruthExtractor:
     """
@@ -279,14 +310,13 @@ class OnlineEvaluator:
         self._pred_frames: Dict[str, List[Box]] = {}
         self.gt_extractor: CarlaGroundTruthExtractor = CarlaGroundTruthExtractor(world, ego_actor_id)
 
-    def add_frame(self, frame_id: str,  ego_transform: carla.Transform, lidar_points_ego: np.ndarray, track_bbs: List[trackedbb]):
+    def add_frame(self, frame_id: str, ego_state: Ego3DState, lidar_points_ego: np.ndarray, track_bbs: List[trackedbb]):
+        ego_transform = _ego_transform(ego_state)
         self._gt_frames[frame_id] = list(self.gt_extractor.update(ego_transform, frame_id, lidar_points_ego))
         pred_boxes : list[Box] = []
         for pb in track_bbs:
-            pred_boxes.append(Box(frame_id=frame_id,
-                    translation=np.array([pb.px, pb.py, pb.z]),
-                    size=np.array([pb.len, pb.wid, pb.height]),
-                    yaw=pb.yaw,velocity=np.array([pb.vx,pb.vy])))
+            pred_boxes.append(Box.from_trackedbb(pb, frame_id=frame_id))
+        pred_boxes = global_boxes_to_ego(pred_boxes, ego_state)
         self._pred_frames[frame_id] = pred_boxes
         print(len(pred_boxes))
 
