@@ -411,7 +411,7 @@ class EgoErrorStateEKF3D:
             self.history_gnss.pop(0)
 
     def update_slam(self, lidar_data: carla.LidarMeasurement, step) -> None:
-        if step%2 == 1 and lidar_data is not None:
+        if lidar_data is not None:
             pred = np.eye(4)
             pred[0:3, 0:3] = quat_to_R(self.q)
             pred[0:3, 3] = self.p

@@ -145,7 +145,7 @@ class CarlaStateEstimatorEngine:
         type(self)._last_state = state
         self.ego_evaluator.add_frame(frame_id=str(step),ego_state=self.state.ego_state)
         self.ego_evaluator.print_report()
-        pts_sensor = np.reshape(lidar_data, (int(len(lidar_data) / 4), 4))
+        pts_sensor = np.reshape(lidar_data.raw_data, (int(len(lidar_data) / 4), 4))
         ranges = np.linalg.norm(pts_sensor[:, :3], axis=1)
         pts_sensor = pts_sensor[ranges>hp.MIN_VALID_RANGE_M]
         self.bbs_evaluator.add_frame(frame_id=str(step),lidar_points_ego=pts_sensor, track_bbs=state.detected_objects,
