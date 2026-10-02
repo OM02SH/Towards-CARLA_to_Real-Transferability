@@ -40,6 +40,8 @@ R_SLAM_ATT = np.eye(3) * SIGMA_SLAM_ATT**2
 CHI2_999 = {1: 10.83, 2: 13.82, 3: 16.27,}
 MAX_R_SCALE = 50.0
 
+EARTH_RADIUS_EQUA = 6378137.0
+
 ##################### SLAM #####################
 SELF_HIT_RANGE = 0.3
 MAX_SENSOR_RANGE = 80.0

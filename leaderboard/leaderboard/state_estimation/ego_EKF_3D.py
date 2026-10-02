@@ -116,6 +116,7 @@ class EgoErrorStateEKF3D:
         self.accel_history = []
         self.ACCEL_HISTORY_LEN = 10
         self.GRAVITY_VAR_TOL = 0.05
+        self._geo_ref = self.map.transform_to_geolocation(carla.Location(0.0, 0.0, 0.0))
         
     def stabilize_covariance(self) -> None:
         """Keep P symmetric positive definite after numerical operations."""
@@ -319,9 +320,20 @@ class EgoErrorStateEKF3D:
         return H
 
     def update_gnss(self, gnss_data: carla.GnssMeasurement, step) -> None:
-        if (self.last_gnss_frame is not None and gnss_data.frame == self.last_gnss_frame):
-            return
-        loc = self.map.geolocation_to_transform(carla.GeoLocation(gnss_data.latitude, gnss_data.longitude, gnss_data.altitude))
+        if self.last_gnss_frame is not None and gnss_data.frame == self.last_gnss_frame: return
+        def _mercator(lat, lon, scale):
+            mx = scale * math.radians(lon) * hp.EARTH_RADIUS_EQUA
+            my = scale * hp.EARTH_RADIUS_EQUA * math.log(math.tan(math.radians(90.0 + lat) / 2.0))
+            return mx, my
+
+        def geolocation_to_location(lat, lon, alt):
+            ref = self._geo_ref
+            scale = math.cos(math.radians(ref.latitude))
+            mx, my = _mercator(lat, lon, scale)
+            mx0, my0 = _mercator(ref.latitude, ref.longitude, scale)
+            return carla.Location(x=mx - mx0, y=-(my - my0), z=alt)
+
+        loc = geolocation_to_location(self.map, gnss_data.latitude, gnss_data.longitude, gnss_data.altitude)
         self.history_gnss.append((loc.x, -loc.y, loc.z,step))
         self.update_error_state(
             z=np.array([loc.x, -loc.y, loc.z], dtype=float),
