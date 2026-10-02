@@ -67,7 +67,7 @@ MODEL:
         CONVERT_WEIGHTS: True
         INIT_CFG:
             type: Pretrained
-            checkpoint: /home/omar-shaat/carlaocc_openpcdet/swin_tiny_patch4_window7_224.pth 
+            checkpoint: ../leaderboard/leaderboard/state_estimation/swin_tiny_patch4_window7_224.pth 
     NECK:
         NAME: GeneralizedLSSFPN
         IN_CHANNELS: [192, 384, 768]
