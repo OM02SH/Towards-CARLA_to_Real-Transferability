@@ -752,7 +752,7 @@ class SensorAgent(BaseAgent, autonomous_agent.AutonomousAgent):
                 )
 
         # Save metric info if in Bench2Drive mode
-        if self.config_closed_loop.is_bench2drive and hasattr(self, "get_metric_info"):
+        if False and self.config_closed_loop.is_bench2drive and hasattr(self, "get_metric_info"):
             metric = self.get_metric_info()
             self.metric_info[self.step] = metric
             with open(f"{self.config_closed_loop.save_path}/metric_info.json", "w") as outfile:
