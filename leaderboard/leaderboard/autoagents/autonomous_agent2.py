@@ -152,7 +152,7 @@ class AutonomousAgent(object):
                 return [vector.roll, vector.pitch, vector.yaw]
             else:
                 return [vector.x, vector.y, vector.z]
-
+        self.get_hero()
         output = {}
         output['acceleration'] = vector2list(self.hero_actor.get_acceleration())
         output['angular_velocity'] = vector2list(self.hero_actor.get_angular_velocity())
