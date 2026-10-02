@@ -58,7 +58,11 @@ class OpenPCDetDetector:
             cfg_from_yaml_file(cfg_file, cfg)
         finally:
             os.chdir(prev_cwd)
-
+        print("starting the detector")
+        print("OPENPCDET_CFG_FILE: ",hp.OPENPCDET_CFG_FILE)
+        print("OPENPCDET_CKPT_FILE: ",hp.OPENPCDET_CKPT_FILE)
+        print("OPENPCDET_DEVICE: ",hp.OPENPCDET_DEVICE)
+        print("OPENPCDET_TOOLS_DIR: ",hp.OPENPCDET_TOOLS_DIR)
         self.class_names = cfg.CLASS_NAMES
         self.dataset = _SingleFrameDataset(dataset_cfg=cfg.DATA_CONFIG, class_names=self.class_names)
         self.model = build_network(model_cfg=cfg.MODEL, num_class=len(self.class_names), dataset=self.dataset)
