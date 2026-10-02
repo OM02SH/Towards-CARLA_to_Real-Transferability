@@ -242,10 +242,11 @@ def build_bbs(half_length, half_width, state: CalculatedState, master_cloud: np.
         yaw_deg = math.degrees(math.atan2(heading_dir_global[1], heading_dir_global[0]))
         length, width, height = box["length"], box["width"], box["height"]
         vx, vy = float(vel_global[0]), float(vel_global[1])
-
+        
         if class_name in hp.OPENPCDET_DYNAMIC_CLASSES:
             matched_radars = _match_radar_points(radar_points, center_x, center_y, center_z,
                                                  length, width, height, yaw_deg)
+            _dbg(f"final data : center_x={center_x}, center_y={center_y}, length={length}, width={width}, vx={vx}, vy={vy}, yaw={yaw_deg}, step={step}, center_z={center_z}, height={height}, radar_points={len(matched_radars)}")
             network_detections.append(bev_Det(
                 center_x=center_x, center_y=center_y, length=length, width=width, vx=vx, vy=vy,
                 yaw=yaw_deg, step=step, center_z=center_z, height=height, radar_points=matched_radars
