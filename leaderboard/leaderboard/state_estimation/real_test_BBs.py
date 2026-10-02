@@ -283,12 +283,12 @@ class OnlineEvaluator:
         self._gt_frames[frame_id] = list(self.gt_extractor.update(ego_transform, frame_id, lidar_points_ego))
         pred_boxes : list[Box] = []
         for pb in track_bbs:
-            pred_boxes.append(
-                Box( frame_id= frame_id,
+            pred_boxes.append(Box(frame_id=frame_id,
                     translation=np.array([pb.px, pb.py, pb.z]),
                     size=np.array([pb.len, pb.wid, pb.height]),
                     yaw=pb.yaw,velocity=np.array([pb.vx,pb.vy])))
         self._pred_frames[frame_id] = pred_boxes
+        print(len(pred_boxes))
 
     def reset(self) -> None:
         self._gt_frames.clear()
