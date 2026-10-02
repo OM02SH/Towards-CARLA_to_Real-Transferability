@@ -131,6 +131,7 @@ class CarlaStateEstimatorEngine:
         lidar_np = np.frombuffer(lidar_data.raw_data, dtype=np.float32).reshape(-1, 4).copy()
         self.tracker.push_frame(state, lidar_np, radar_datas, cameras, step)
         result = self.tracker.get_latest_result()
+        print("state from sensors resutlt: ", result)
         if result is not None:
             state.detected_objects, state.ttcs, state.min_ttc, pts = result
             self._last_result = result

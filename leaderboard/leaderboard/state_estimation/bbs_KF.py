@@ -21,7 +21,7 @@ from leaderboard.state_estimation.UKF_bb import UKFBoundingBoxTracker
 from leaderboard.state_estimation.camera_calib import build_camera_calibration, lidar2ego_from_offset, lidar_offset, points_in_rotated_box
 import leaderboard.state_estimation.hyperparams as hp
 
-DEBUG_PRINT = True
+DEBUG_PRINT = False
 FIX_FRAMES = True
 
 def _dbg(*a):
@@ -260,12 +260,12 @@ def build_bbs(half_length, half_width, state: CalculatedState, master_cloud: np.
                 z=center_z, height=height,
                 pos_history=[], slip_angle_deg=0.0
             ))
-    print("detections: ", len(network_detections))
+    #print("detections: ", len(network_detections))
     moving_tracks = tracker.update(network_detections, step)
     tracked: list[trackedbb] = [t.get_all_data() for t in moving_tracks]
     tracked.extend(network_static)
     print("tracked: ", len(tracked))
-    print(tracked)
+    #print(tracked)
     return tracked, obstacle_pts
 
 
@@ -409,7 +409,7 @@ class BBsWorker(threading.Thread):
                                               self.radar_transforms, self.half_length, self.half_width,
                                               self.tracker, self.carla_map, self.detector,
                                               self.half_height, self.lidar_offset)
-                print("final final resutl", result)
+                #print("final final resutl", result)
             except Exception:
                 traceback.print_exc()
                 sys.stderr.flush()
