@@ -76,6 +76,6 @@ def points_in_rotated_box(points_xyz: np.ndarray, center_x: float, center_y: flo
                        height + (margin * 2), np.deg2rad(yaw_deg)]])
     points_tensor = torch.from_numpy(points_xyz).float()
     boxes_tensor = torch.from_numpy(boxes).float()
-    box_point_masks = roiaware_pool3d_utils.points_in_boxes_cpu(boxes_tensor, points_tensor)
+    box_point_masks = roiaware_pool3d_utils.points_in_boxes_cpu(points_tensor, boxes_tensor)
     return box_point_masks[0].numpy() > 0
 
