@@ -355,8 +355,7 @@ def get_lidar_radar_info(state: CalculatedState, lidar_stream, radar_streams, ca
 
 
 class BBsWorker(threading.Thread):
-    def __init__(self, lidar_transform, radar_transforms, half_length, half_width,
-                 half_height: float = hp.DEFAULT_EGO_HALF_HEIGHT):
+    def __init__(self, lidar_transform, radar_transforms, half_length, half_width, half_height: float = hp.DEFAULT_EGO_HALF_HEIGHT):
         super().__init__()
         self.tracker = UKFBoundingBoxTracker()
         try:
@@ -372,7 +371,7 @@ class BBsWorker(threading.Thread):
         self.lidar_transform = lidar_transform
         self.lidar_offset = lidar_offset(lidar_transform)
         self.detector.dataset.set_lidar_to_ego(lidar2ego_from_offset(*self.lidar_offset))
-        self.radar_transforms = radar_transforms
+        self.radar_transforms: dict[str, np.ndarray] = {name: np.array(t.get_matrix(), dtype=np.float64) for name, t in radar_transforms.items()}
         self.half_length = half_length
         self.half_width = half_width
         self.half_height = half_height
