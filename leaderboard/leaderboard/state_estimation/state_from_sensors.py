@@ -144,9 +144,10 @@ class CarlaStateEstimatorEngine:
         type(self)._last_state = state
         self.ego_evaluator.add_frame(frame_id=str(step),ego_state=self.state.ego_state)
         self.ego_evaluator.print_report()
-        self.bbs_evaluator.add_frame(frame_id=str(step),lidar_points_ego=pts, track_bbs=state.detected_objects,
-                ego_transform=carla.Transform(carla.Location(state.ego_state.x,state.ego_state.y,state.ego_state.z),
-                                    carla.Rotation(state.ego_state.pitch,state.ego_state.yaw,state.ego_state.roll)))
+        if pts is not None:
+            self.bbs_evaluator.add_frame(frame_id=str(step),lidar_points_ego=pts, track_bbs=state.detected_objects,
+                    ego_transform=carla.Transform(carla.Location(state.ego_state.x,state.ego_state.y,state.ego_state.z),
+                                        carla.Rotation(state.ego_state.pitch,state.ego_state.yaw,state.ego_state.roll)))
         self.bbs_evaluator.print_report()
 
     @staticmethod
