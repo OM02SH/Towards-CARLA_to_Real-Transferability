@@ -413,7 +413,7 @@ class ObjectUKF:
 class UKFTrackBB2D:
     def __init__(self, track_id: int, detection: bev_Det, dt: float, max_history: int = 20,
                  window_size: int = 10, min_motion_speed: float = 0.5, flip_tolerance_deg: float = 25.0,
-                 stationary_speed_thresh: float = 0.2, min_hits_to_confirm: int = 5):
+                 stationary_speed_thresh: float = 0.2, min_hits_to_confirm: int = 1):
         self.id = track_id
         self.dt = dt
         self.ukf = ObjectUKF(dt=dt, x0=detection.center_x, y0=detection.center_y, yaw0=math.radians(detection.yaw), 
