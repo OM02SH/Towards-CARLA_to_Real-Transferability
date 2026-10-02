@@ -1,5 +1,6 @@
 import math
 import os
+import sys
 import numpy as np
 from typing import Optional, Tuple
 import carla
@@ -173,12 +174,13 @@ def build_bbs(half_length, half_width, state: CalculatedState, master_cloud: np.
 
     if len(obstacle_pts) < hp.MIN_NUMBER_LIDAR_HITS:
         moving_tracks = tracker.update([], step)
-        return [t.get_all_data() for t in moving_tracks]
+        return [t.get_all_data() for t in moving_tracks], obstacle_pts
 
     T = ego_to_world_matrix(state.ego_state)    
     network_detections: list[bev_Det] = []
     network_static: list[trackedbb] = []
-    for box in detector.infer(obstacle_pts, cameras):
+    boxes = detector.infer(obstacle_pts, cameras)
+    for box in boxes:
         print("detected box : ", box)
         class_name = box["class_name"].strip().lower()
         if class_name not in hp.OPENPCDET_DYNAMIC_CLASSES and class_name not in hp.OPENPCDET_STATIC_CLASSES:  continue 
@@ -221,7 +223,7 @@ def process_radar(state: CalculatedState, radar_data: carla.RadarMeasurement, se
 
     parsed_points = []
     for det in radar_data:
-        r, az, alt, v_r = det[0], det[1], det[2], det[3]
+        r, az, alt, v_r = det.depth, det.azimuth, det.altitude, det.velocity
         cos_alt = math.cos(alt)
 
         p_sensor = np.array([r * cos_alt * math.cos(az), r * cos_alt * math.sin(az), r * math.sin(alt), 1.0], dtype=np.float32)
@@ -245,7 +247,8 @@ def get_lidar_radar_info(state: CalculatedState, lidar_stream, radar_streams, ca
         radar_points = np.vstack([radar_points, process_radar(state, radar_data, radar_transforms[sensor_name])])
 
     # pts = np.ndarray((0, 4))
-    pts_sensor = np.reshape(lidar_stream, (int(len(lidar_stream) / 4), 4))
+    #pts_sensor = np.reshape(lidar_stream, (int(len(lidar_stream) / 4), 4))
+    pts_sensor = lidar_stream
     ranges = np.linalg.norm(pts_sensor[:, :3], axis=1)
     pts_sensor = pts_sensor[ranges>hp.MIN_VALID_RANGE_M]
     pts_sensor[:, 1] = -pts_sensor[:, 1]
@@ -345,9 +348,15 @@ class BBsWorker(threading.Thread):
                 (state, lidar_np, radar_dict, cameras, step) = self.input_queue.get(timeout=0.1)
             except queue.Empty:
                 continue
-            result = get_lidar_radar_info(state, lidar_np, radar_dict, cameras, step,
-                                           self.radar_transforms, self.half_length, self.half_width, self.tracker,
-                                           self.carla_map, self.detector, self.half_height)
+            try:
+                result = get_lidar_radar_info(state, lidar_np, radar_dict, cameras, step,
+                                            self.radar_transforms, self.half_length, self.half_width,
+                                            self.tracker, self.carla_map, self.detector, self.half_height)
+            except Exception:
+                import traceback
+                traceback.print_exc()
+                sys.stderr.flush()
+                continue
             self.output_queue.put(result)
 
     def stop(self):
