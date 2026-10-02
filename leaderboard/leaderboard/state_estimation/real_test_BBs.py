@@ -8,11 +8,8 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from leaderboard.state_estimation.sensor_dataclasses import trackedbb, Box, StaticVehicleRef
 import numpy as np
 import carla
+import leaderboard.state_estimation.hyperparams as hp
 
-DIST_THRESHOLDS = (0.5, 1.0, 2.0, 4.0)
-TP_DISTANCE_THRESHOLD = 2.0
-
-_STATIC_VEHICLE_SUBTAGS = {14: "car", 15: "truck", 16: "bus", 18: "motorcycle", 19: "bicycle"}
 
 def wrap_angle_rad(angle: float) -> float:
     return math.atan2(math.sin(angle), math.cos(angle))
@@ -62,7 +59,7 @@ def _filter_range(boxes: Sequence[Box], max_range: float) -> List[Box]:
     return [b for b in boxes if float(np.linalg.norm(b.translation[:2])) <= max_range]
 
 def evaluate_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List[Box]],
-                    thresholds: Sequence[float] = DIST_THRESHOLDS, tp_threshold: float = TP_DISTANCE_THRESHOLD,
+                    thresholds: Sequence[float] = hp.DIST_THRESHOLDS, tp_threshold: float = hp.TP_DISTANCE_THRESHOLD,
                     max_range: Optional[float] = None, by_tag: bool = True) -> dict:
     all_frames = sorted(set(gt_frames) | set(pred_frames))
     per_threshold = {}
@@ -143,11 +140,14 @@ class CarlaGroundTruthExtractor:
         self.visibility_margin = visibility_margin
 
         specific_tag_by_id: Dict[int, str] = {}
-        for tag_id, name in _STATIC_VEHICLE_SUBTAGS.items():
+        for tag_id, name in hp.STATIC_VEHICLE_SUBTAGS.items():
             for obj in world.get_environment_objects(carla.CityObjectLabel(tag_id)):
                 specific_tag_by_id[obj.id] = name
         refs = []
-        for obj in world.get_environment_objects(carla.CityObjectLabel.Vehicles):
+        env_vehicle_objs = []
+        for label in hp.VEHICLE_LABELS:
+            env_vehicle_objs.extend(world.get_environment_objects(label))
+        for obj in env_vehicle_objs:
             bbox = obj.bounding_box
             refs.append(StaticVehicleRef(
                 env_id=obj.id, tag=specific_tag_by_id.get(obj.id, "vehicle"),
@@ -270,8 +270,8 @@ def save_metrics(metrics: dict, path: Path) -> None:
     path.write_text(json.dumps(sanitize(metrics), indent=2))
 
 class OnlineEvaluator:
-    def __init__(self, world: carla.World, ego_actor_id: int, thresholds: Sequence[float] = DIST_THRESHOLDS,
-                 tp_threshold: float = TP_DISTANCE_THRESHOLD, max_range: float = 50):
+    def __init__(self, world: carla.World, ego_actor_id: int, thresholds: Sequence[float] = hp.DIST_THRESHOLDS,
+                 tp_threshold: float = hp.TP_DISTANCE_THRESHOLD, max_range: float = 50):
         self.thresholds = list(thresholds)
         self.tp_threshold = tp_threshold
         self.max_range = max_range

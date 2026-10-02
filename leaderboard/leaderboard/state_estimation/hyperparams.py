@@ -2,6 +2,7 @@ import os
 import torch
 import numpy as np
 import math
+import carla
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -146,3 +147,16 @@ AGGREGATE_ROWS = (
     ("angular_rate_vec", "Angular rate vec", "rad/s"),
     ("accel_body_vec", "Accel vec (body)", "m/s^2"),
 )
+
+########### BBs test ###############
+
+VEHICLE_LABELS = [
+            getattr(carla.CityObjectLabel, name)
+            for name in ("Car", "Truck", "Bus", "Motorcycle", "Bicycle", "Train")
+            if hasattr(carla.CityObjectLabel, name)
+        ]
+
+DIST_THRESHOLDS = (0.5, 1.0, 2.0, 4.0)
+TP_DISTANCE_THRESHOLD = 2.0
+
+STATIC_VEHICLE_SUBTAGS = {14: "car", 15: "truck", 16: "bus", 18: "motorcycle", 19: "bicycle"}
