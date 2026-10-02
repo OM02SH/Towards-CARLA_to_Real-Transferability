@@ -262,4 +262,6 @@ class SensorDataParser:
                 success = cv2.imwrite(save_path, img_to_save_bgr)
                 if not success:
                     print(f"FAILED to write image to {save_path}")
+                else:
+                    print("succcess saved")
         return processed_data
