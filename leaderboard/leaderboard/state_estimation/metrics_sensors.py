@@ -222,6 +222,7 @@ class SensorDataParser:
         processed_data = {
             "lidar": None,
             "cameras": {},
+            "yolo_cameras": np.array,
             "radars": {},
             "imu": None,
             "gnss": None
