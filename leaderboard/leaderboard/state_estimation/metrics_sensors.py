@@ -258,6 +258,6 @@ class SensorDataParser:
             processed_data["stacked_cameras"] = stacked_imgs
             for name in  ["cam_00", "cam_01", "cam_02", "cam_03", "cam_04", "cam_05"]:
                 img_to_save_bgr = cv2.cvtColor(processed_data["cameras"][name], cv2.COLOR_RGB2BGR)
-                cv2.imwrite(f"{name}_output.png", img_to_save_bgr)
+                cv2.imwrite(f"/app/output/{name}_output.png", img_to_save_bgr)
                 print("one saved")
         return processed_data
