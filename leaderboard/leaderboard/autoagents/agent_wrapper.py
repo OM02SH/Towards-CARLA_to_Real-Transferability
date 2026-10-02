@@ -408,7 +408,7 @@ class PCLA():
         route_indexer = RouteIndexer(self.routePath, scenarios, 1)
         config = route_indexer.next()"""
         
-        gps_route, route = interpolate_trajectory(self.world, self.config.trajectory)
+        gps_route, route = interpolate_trajectory(self.config.keypoints)
 
         self.agent_instance.set_global_plan(gps_route, route)
 

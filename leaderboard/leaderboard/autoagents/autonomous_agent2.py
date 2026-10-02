@@ -97,15 +97,15 @@ class AutonomousAgent(object):
         """
         pass
 
-    def __call__(self, sensors=None, vehicle=None, Qs=None):
+    def __call__(self, sensors=None, vehicle=None):
         """
         Execute the agent call, e.g. agent()
         Returns the next vehicle controls
         """
         input_data = self.sensor_interface.get_data(GameTime.get_frame())
 
-        if Qs:
-            input_data["Qs"] = Qs
+        """if Qs:
+            input_data["Qs"] = Qs"""
 
         timestamp = GameTime.get_time()
 
@@ -118,10 +118,10 @@ class AutonomousAgent(object):
         print('=== [Model Inference] -- Wallclock = {} -- System time = {} -- Game time = {} -- Ratio = {}x'.format(
             str(wallclock)[:-3], format(wallclock_diff, '.3f'), format(timestamp, '.3f'), format(sim_ratio, '.3f')), flush=True)
         
-        control, waypoints, responce = self.run_step(input_data = input_data, timestamp = timestamp, vehicle = vehicle)
+        control = self.run_step(input_data = input_data, timestamp = timestamp, vehicle = vehicle)
         control.manual_gear_shift = False
         
-        return control, waypoints, responce
+        return control
 
     @staticmethod
     def get_ros_version():

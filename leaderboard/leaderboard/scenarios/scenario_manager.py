@@ -122,6 +122,8 @@ class ScenarioManager(object):
         """
         GameTime.restart()
         # self._agent_wrapper = AgentWrapperFactory.get_wrapper(agent)
+        config.gps_route = scenario.gps_route
+        config.route = scenario.route
         self.pcla = PCLA(agent_name, scenario.ego_vehicles[0], config, self.client)
         # self.QALidar = QALidar(CarlaDataProvider.get_world(), scenario.ego_vehicles[0])
         self.route_index = route_index
@@ -169,12 +171,12 @@ class ScenarioManager(object):
         self._scenario_thread = threading.Thread(target=self.build_scenarios_loop, args=(self._debug_mode > 0, ))
         self._scenario_thread.start()
 
-        world = CarlaDataProvider.get_world()
-        map = world.get_map()
-        self.sensor_suite = VehicleSensorSuite(world, self.ego_vehicles[0])
+        self.world = CarlaDataProvider.get_world()
+        map = self.world.get_map()
+        self.sensor_suite = VehicleSensorSuite(self.world, self.ego_vehicles[0])
         self.parser = SensorDataParser()
         radar_transforms = {name: t for name, t in self.sensor_suite.mount_transforms.items() if "radar" in name}
-        self.state_from_sensors = CarlaStateEstimatorEngine(self.ego_vehicles[0], world, map, self.sensor_suite.mount_transforms["lidar"], radar_transforms)
+        self.state_from_sensors = CarlaStateEstimatorEngine(self.ego_vehicles[0], self.world, map, self.sensor_suite.mount_transforms["lidar"], radar_transforms)
         #QAG = OnlineCarlaQAGenerator(world,map.name, self.scenario.ego_vehicles[0].id, map.name)
 
         while self._running:
@@ -206,7 +208,7 @@ class ScenarioManager(object):
                 self._agent_watchdog.resume()
                 self._agent_watchdog.update()
                 # ego_action = self._agent_wrapper()
-                ego_action, _, _ = self.pcla.get_action()
+                ego_action = self.pcla.get_action()
                 """if self.tick_count!=0 and self.tick_count/10 == 0:
                     lidar_points_ego = self.QALidar.get_points_ego_frame()
                     (combined_qas, num_questions, num_objects, num_questions_per_category,
