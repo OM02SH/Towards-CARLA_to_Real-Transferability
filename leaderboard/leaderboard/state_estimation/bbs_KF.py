@@ -264,6 +264,8 @@ def build_bbs(half_length, half_width, state: CalculatedState, master_cloud: np.
     moving_tracks = tracker.update(network_detections, step)
     tracked: list[trackedbb] = [t.get_all_data() for t in moving_tracks]
     tracked.extend(network_static)
+    print("tracked: ", len(tracked))
+    print(tracked)
     return tracked, obstacle_pts
 
 
