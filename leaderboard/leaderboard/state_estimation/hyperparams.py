@@ -14,29 +14,26 @@ R_WHEEL = np.diag([0.25**2, 0.10**2])
 SIGMA_GRAVITY_DIRECTION = 0.2
 R_GRAVITY = np.eye(3) * SIGMA_GRAVITY_DIRECTION**2
 
-SIGMA_GYRO = math.radians(0.5)       # rad/s/sqrt(Hz)
-SIGMA_ACCEL = 0.7                    # m/s^2/sqrt(Hz)
+SIGMA_GYRO = math.radians(0.5)       
+SIGMA_ACCEL = 0.7                    
 SIGMA_GYRO_BIAS_RW = math.radians(0.01)
 SIGMA_ACCEL_BIAS_RW = 0.01
-SIGMA_WHEEL_BIAS_RW = 0.03           # m/s/sqrt(Hz)
+SIGMA_WHEEL_BIAS_RW = 0.03           
 
-# Gravity update gating.
-GRAVITY_NORM_TOL = 0.5               # m/s^2
-GRAVITY_UPDATE_MAX_SPEED = 3       # m/s
+GRAVITY_NORM_TOL = 0.5             
+GRAVITY_UPDATE_MAX_SPEED = 3       
 GRAVITY_DYNAMIC_SCALE = 4.0
 
 MAX_HISTORY = 20
 MIN_HISTORY = 5
 R_GNSS_VEL = np.diag([1.5**2, 1.5**2, 1.5**2])
 
-# SLAM typically has centimeter-level precision and sub-degree angular precision.
-SIGMA_SLAM_POS = 0.05  # m
+SIGMA_SLAM_POS = 0.05
 SIGMA_SLAM_ATT = math.radians(1.0)
 
 R_SLAM_POS = np.eye(3) * SIGMA_SLAM_POS**2
 R_SLAM_ATT = np.eye(3) * SIGMA_SLAM_ATT**2
 
-# Innovation gates.
 CHI2_999 = {1: 10.83, 2: 13.82, 3: 16.27,}
 MAX_R_SCALE = 50.0
 
@@ -51,17 +48,15 @@ TRACK_CORR_DIST = 1.0
 EDGE_CORR_DIST_COARSE = 3.0
 EDGE_CORR_DIST_FINE = 0.5
 
-# Keyframe insertion thresholds.
 KEYFRAME_TRANSLATION_M = 3.0
 KEYFRAME_ROTATION_DEG = 8.0
 
 LOOP_SEARCH_RADIUS_M = 15.0
-LOOP_MIN_KEYFRAME_GAP = 8          # ignore recent keyframes as trivial "loop closures"
+LOOP_MIN_KEYFRAME_GAP = 8          
 LOOP_FITNESS_MIN = 0.45
 LOOP_RMSE_MAX = 0.3
 
 GLOBAL_OPT_EDGE_PRUNE_THRESHOLD = 0.25
-
 
 ################ Bounding Boxes ################
 GROUND_CLEARANCE = 0.3
@@ -117,7 +112,6 @@ ASPECT_RATIO_TOLERANCE = 0.20
 HOLD_MAX_CALLS = 10
 
 ############# Ego state test ###############
-
 POSITION_FIELDS = ("x", "y", "z")
 RATE_FIELDS = ("roll_rate", "pitch_rate", "yaw_rate")
 VELOCITY_FIELDS = ("vx_body", "vy_body", "vz_body", "speed", "vx_world", "vy_world", "vz_world")
@@ -128,11 +122,10 @@ LINEAR_FIELDS = POSITION_FIELDS + RATE_FIELDS + VELOCITY_FIELDS + ACCEL_FIELDS
 STAT_KEYS = ("bias", "std", "mae", "median_abs", "rmse", "p95_abs", "max_abs")
 
 DEFAULT_RPE_DELTA_FRAMES = 20
-MOVING_SPEED_THRESHOLD = 1.0       # m/s, used for relative speed error and course angle error
-STATIONARY_SPEED_THRESHOLD = 0.1   # m/s, used for the "standing still" speed error
-MIN_RPE_SEGMENT = 1.0              # m, segments shorter than this are skipped for RPE in %
+MOVING_SPEED_THRESHOLD = 1.0       
+STATIONARY_SPEED_THRESHOLD = 0.1   
+MIN_RPE_SEGMENT = 1.0              
 
-# (key in result["aggregate"], label, unit)
 AGGREGATE_ROWS = (
     ("position_2d", "Position 2D (ATE)", "m"),
     ("position_3d", "Position 3D (ATE)", "m"),

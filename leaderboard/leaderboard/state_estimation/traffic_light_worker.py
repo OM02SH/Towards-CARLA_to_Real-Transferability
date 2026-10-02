@@ -4,10 +4,11 @@ import numpy as np
 from ultralytics import YOLO
 from leaderboard.state_estimation.sensor_dataclasses import LightState
 import leaderboard.state_estimation.hyperparams as hp
+import os
 
 class TrafficLightWorker:
     def __init__(self, conf=0.4, device="gpu"):
-        self._model = YOLO("best.pt")
+        self._model = YOLO(os.path.join(_HERE, "best.pt"))
         self._conf = conf
         self._device = device
         self._in_queue = queue.Queue(maxsize=1)
