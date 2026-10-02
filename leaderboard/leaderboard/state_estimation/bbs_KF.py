@@ -202,7 +202,7 @@ def build_bbs(half_length, half_width, state: CalculatedState, master_cloud: np.
     moving_tracks = tracker.update(network_detections, step)
     tracked: list[trackedbb] = [t.get_all_data() for t in moving_tracks]
     tracked.extend(network_static)
-    return tracked
+    return tracked, obstacle_pts
 
 def process_radar(state: CalculatedState, radar_data: carla.RadarMeasurement, sensor_transform: np.ndarray) -> np.ndarray:
     if GameTime.get_time() < 0.5:
@@ -250,7 +250,7 @@ def get_lidar_radar_info(state: CalculatedState, lidar_stream, radar_streams, ca
 
     #print("points : ",len(pts),flush=True)
     
-    tracked: list[trackedbb] = build_bbs(half_length=half_length, half_width=half_width,
+    tracked, pts = build_bbs(half_length=half_length, half_width=half_width,
                     state=state, master_cloud=pts_sensor, radar_points=radar_points,
                     cameras=cameras, step=step, tracker=tracker, detector=detector)
 
@@ -293,7 +293,7 @@ def get_lidar_radar_info(state: CalculatedState, lidar_stream, radar_streams, ca
     ttcs = np.append(ttcs, road_exit_ttc)
     min_ttc = float(np.min(ttcs))
 
-    return tracked, ttcs, min_ttc
+    return tracked, ttcs, min_ttc, pts
 
 class BBsWorker(threading.Thread):
     def __init__(self, lidar_transform, radar_transforms, half_length, half_width,

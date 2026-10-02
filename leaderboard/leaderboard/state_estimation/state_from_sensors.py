@@ -128,7 +128,7 @@ class CarlaStateEstimatorEngine:
         self.speed_limit = vehicle.get_speed_limit()
         state.ego_state = self.ekf.compute(dt, vehicle, imu_data, gnss_data, lidar_data, step)
         self.tracker.push_frame(state,lidar_data,radar_datas,cameras,step)
-        state.detected_objects = self.tracker.get_latest_result()
+        state.detected_objects, state.ttcs, state.min_ttc, pts = self.tracker.get_latest_result()
         if frame is not None: self.tlw.push_frame(frame)
         self.state.light = self.tlw.light_state()
         self.get_rest_info(state)
@@ -136,7 +136,7 @@ class CarlaStateEstimatorEngine:
         type(self)._last_state = state
         self.ego_evaluator.add_frame(frame_id=str(step),ego_state=self.state.ego_state)
         self.ego_evaluator.print_report()
-        self.bbs_evaluator.add_frame(frame_id=str(step),lidar_points_ego=lidar_data, track_bbs=state.detected_objects,
+        self.bbs_evaluator.add_frame(frame_id=str(step),lidar_points_ego=pts, track_bbs=state.detected_objects,
                 ego_transform=carla.Transform(carla.Location(state.ego_state.x,state.ego_state.y,state.ego_state.z),
                                     carla.Rotation(state.ego_state.pitch,state.ego_state.yaw,state.ego_state.roll)))
         self.evaluator.print_report()
