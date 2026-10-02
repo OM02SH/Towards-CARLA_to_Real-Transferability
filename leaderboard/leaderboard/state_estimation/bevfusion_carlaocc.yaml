@@ -1,7 +1,7 @@
 CLASS_NAMES: ['car','truck','bus','motorcycle','bicycle','pedestrian','rider','train','building','pole','traffic_sign','traffic_light','wall','fence','guard_rail','bridge','other']
 
 DATA_CONFIG:
-    _BASE_CONFIG_: ./carlaocc_dataset.yaml
+    _BASE_CONFIG_: ../leaderboard/leaderboard/state_estimation/carlaocc_dataset.yaml
     INFO_PATH: {
         'train': ['/bulk/users/omar-shaat/CarlaOccV1/bevfusion_infos_train.pkl'],
         'test': ['/bulk/users/omar-shaat/CarlaOccV1/bevfusion_infos_val.pkl']
