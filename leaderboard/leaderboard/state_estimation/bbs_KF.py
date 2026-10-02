@@ -71,7 +71,9 @@ class OpenPCDetDetector:
         self.dataset.load_data(points_xyzi.astype(np.float32), imgs)
         data_dict = self.dataset.collate_batch([self.dataset[0]])
         load_data_to_gpu(data_dict)
-        pred_dicts, _ = self.model.forward(data_dict)
+        print("stated inference")
+        pred_dicts, k = self.model.forward(data_dict)
+        print("output : ", pred_dicts, " and ", k)
         pred = pred_dicts[0]
         boxes = pred["pred_boxes"].cpu().numpy()
         scores = pred["pred_scores"].cpu().numpy()
@@ -175,8 +177,7 @@ def build_bbs(half_length, half_width, state: CalculatedState, master_cloud: np.
     for box in detector.infer(obstacle_pts, cameras):
         print("detected box : ", box)
         class_name = box["class_name"].strip().lower()
-        if class_name not in hp.OPENPCDET_DYNAMIC_CLASSES and class_name not in hp.OPENPCDET_STATIC_CLASSES:  
-            continue 
+        if class_name not in hp.OPENPCDET_DYNAMIC_CLASSES and class_name not in hp.OPENPCDET_STATIC_CLASSES:  continue 
         center_h = np.array([box["x"], box["y"], box["z"], 1.0])
         center_global = T @ center_h
         heading_dir_global = T[:3, :3] @ np.array(
