@@ -17,8 +17,8 @@ import sys
 import gc
 
 import carla
-from scenario_runner.srunner.scenariomanager.carla_data_provider import CarlaDataProvider
-from scenario_runner.srunner.scenariomanager.timer import GameTime
+from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
+from srunner.scenariomanager.timer import GameTime
 
 from leaderboard.envs.sensor_interface import CallBack, OpenDriveMapReader, SpeedometerReader, SensorConfigurationInvalid
 from leaderboard.autoagents.autonomous_agent import Track
@@ -30,7 +30,7 @@ import importlib
 from leaderboard.autoagents.pcla_functions import give_path, setup_sensor_attributes, location_to_waypoint, route_maker
 from leaderboard.utils.route_manipulation import interpolate_trajectory
 from leaderboard.utils.route_indexer import RouteIndexer
-from scenario_runner.srunner.scenariomanager.watchdog import Watchdog
+from srunner.scenariomanager.watchdog import Watchdog
 
 
 IS_BENCH2DRIVE = os.environ.get('SAVE_PATH', None)
