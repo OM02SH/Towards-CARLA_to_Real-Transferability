@@ -80,9 +80,9 @@ OPENPCDET_CKPT_FILE = os.path.join(_THIS_DIR, "bevfusion.pth")
 OPENPCDET_TOOLS_DIR = os.path.join(_THIS_DIR, "../../../pcdet") 
 
 OPENPCDET_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-OPENPCDET_DYNAMIC_CLASSES = {"car", "truck", "pedestrian"}
+OPENPCDET_DYNAMIC_CLASSES = {"car", "truck", "pedestrian", "bus", 'motorcycle','bicycle', 'train'}
 OPENPCDET_STATIC_CLASSES = {"barrier", "traffic_cone"}
-OPENPCDET_SCORE_THRESH = 0.1
+OPENPCDET_SCORE_THRESH = 0.15
 OPENPCDET_BOX_MARGIN_M = 0.3     
 cam_intrinsic = np.array([
     [552.554261, 0.0, 704.0, 0.0],
