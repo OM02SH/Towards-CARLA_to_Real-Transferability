@@ -58,30 +58,47 @@ def greedy_match(gt_boxes: Sequence[Box], pred_boxes: Sequence[Box],
 def _filter_range(boxes: Sequence[Box], max_range: float) -> List[Box]:
     return [b for b in boxes if float(np.linalg.norm(b.translation[:2])) <= max_range]
 
+def _is_visible(box: Box) -> bool:
+    return bool(getattr(box, 'visible', True))
+
 def evaluate_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List[Box]],
                     thresholds: Sequence[float] = hp.DIST_THRESHOLDS, tp_threshold: float = hp.TP_DISTANCE_THRESHOLD,
                     max_range: Optional[float] = None, by_tag: bool = True) -> dict:
+    """
+    Visibility-aware scoring. Every GT box is either lidar-visible or not.
+      - A visible GT that is not matched is a MISS: it lowers recall.
+      - An unseen GT (too few lidar points) that is not matched costs nothing.
+      - An unseen GT that IS matched is a bonus: a true positive for precision, and it enters the
+        recall numerator and denominator (so it can only raise recall, never lower it).
+      - A prediction that matches no GT at all is a false positive: it lowers precision.
+    recall    = matched / (visible GT + matched unseen GT)
+    precision = matched / predictions
+    """
+    # tp_threshold has to be one of the evaluated thresholds, otherwise the TP errors are all NaN
+    thresholds = sorted(set(float(t) for t in thresholds) | {float(tp_threshold)})
     all_frames = sorted(set(gt_frames) | set(pred_frames))
     per_threshold = {}
     tp_errors_by_tag: Dict[str, Dict[str, List[float]]] = {}
     overall_tp_errors: Dict[str, List[float]] = {"trans_err": [], "scale_err": [], "orient_err": [], "vel_err": []}
 
     for thresh in thresholds:
-        n_gt_visible = n_pred = n_matched = n_matched_visible = 0
+        n_gt_visible = n_pred = n_matched = n_matched_visible = n_matched_unseen = 0
         for frame_id in all_frames:
             gt = gt_frames.get(frame_id, [])
             pred = pred_frames.get(frame_id, [])
             if max_range is not None:
                 gt = _filter_range(gt, max_range)
                 pred = _filter_range(pred, max_range)
-            
+
             pairs, _, _ = greedy_match(gt, pred, thresh)
-            
-            # Use getattr for visibility so we don't break your existing Box dataclass
-            n_gt_visible += sum(1 for g in gt if getattr(g, 'visible', True))
+
+            vis = [_is_visible(g) for g in gt]
+            hits_visible = sum(1 for gi, _ in pairs if vis[gi])
+            n_gt_visible += sum(vis)
             n_pred += len(pred)
             n_matched += len(pairs)
-            n_matched_visible += sum(1 for gi, pi in pairs if getattr(gt[gi], 'visible', True))
+            n_matched_visible += hits_visible
+            n_matched_unseen += len(pairs) - hits_visible
 
             if abs(thresh - tp_threshold) < 1e-9:
                 for gi, pi in pairs:
@@ -98,14 +115,14 @@ def evaluate_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List
                         d["orient_err"].append(yaw_diff(g, p))
                         d["vel_err"].append(velocity_l2(g, p))
 
-        # Fix 3: Recall only requires finding visible GTs. 
-        # Precision rewards matching anything (even if it was temporarily occluded)
-        recall = n_matched_visible / n_gt_visible if n_gt_visible else float("nan")
+        n_gt_eval = n_gt_visible + n_matched_unseen
+        recall = n_matched / n_gt_eval if n_gt_eval else float("nan")
         precision = n_matched / n_pred if n_pred else float("nan")
         f1 = (2 * precision * recall / (precision + recall)
               if np.isfinite(precision) and np.isfinite(recall) and (precision + recall) > 0 else float("nan"))
-        
-        per_threshold[thresh] = {"num_gt_visible": n_gt_visible, "num_pred": n_pred, "num_matched": n_matched,
+
+        per_threshold[thresh] = {"num_gt_visible": n_gt_visible, "num_matched_unseen": n_matched_unseen,
+                                 "num_pred": n_pred, "num_matched": n_matched,
                                  "recall": recall, "precision": precision, "f1": f1}
 
     def _means(d): return {k: (float(np.nanmean(v)) if v else float("nan")) for k, v in d.items()}
@@ -162,7 +179,6 @@ def global_boxes_to_ego(boxes: Sequence[Box], ego_state: Ego3DState) -> List[Box
         ))
     return converted
 
-
 class CarlaGroundTruthExtractor:
     """
         Ground truth built once from the map, then read directly every frame
@@ -194,7 +210,9 @@ class CarlaGroundTruthExtractor:
                 yaw_world=math.radians(bbox.rotation.yaw)))
         self.static_refs: List[StaticVehicleRef] = refs
 
-    def _get_points_in_box(self, box: Box, lidar_points_ego: np.ndarray) -> int:
+    def _get_points_in_box(self, box: Box, lidar_points_ego: Optional[np.ndarray]) -> int:
+        if lidar_points_ego is None:
+            return self.min_points_for_visibility
         if lidar_points_ego.size == 0:
             return 0
         rel = lidar_points_ego[:, :3] - box.translation
@@ -203,17 +221,17 @@ class CarlaGroundTruthExtractor:
         y_local = s * rel[:, 0] + c * rel[:, 1]
         z_local = rel[:, 2]
         l, w, h = box.size
-        inside = ((np.abs(x_local) <= l / 2 + self.visibility_margin) & 
-                  (np.abs(y_local) <= w / 2 + self.visibility_margin) & 
+        inside = ((np.abs(x_local) <= l / 2 + self.visibility_margin) &
+                  (np.abs(y_local) <= w / 2 + self.visibility_margin) &
                   (np.abs(z_local) <= h / 2 + self.visibility_margin))
         return int(np.count_nonzero(inside))
 
-    def _actor_boxes(self, ego_transform: carla.Transform, frame_id: str, lidar_points_ego: np.ndarray) -> List[Box]:
+    def _actor_boxes(self, ego_transform: carla.Transform, frame_id: str, lidar_points_ego: Optional[np.ndarray]) -> List[Box]:
         ego_pos = np.array([ego_transform.location.x, ego_transform.location.y])
         boxes = []
         all_actors = self.world.get_actors()
         candidates = list(all_actors.filter("vehicle.*")) + list(all_actors.filter("walker.pedestrian.*"))
-        
+
         def _tag_from_type_id(type_id: str) -> str:
             t = type_id.lower()
             if t.startswith("walker."): return "pedestrian"
@@ -221,7 +239,7 @@ class CarlaGroundTruthExtractor:
                 if keyword in t: return keyword
             if t.startswith("vehicle."): return "car"
             return t
-        
+
         def box_from_actor(actor: carla.Actor, tag: str = "") -> Box:
             actor_transform = actor.get_transform()
             bbox = actor.bounding_box
@@ -237,7 +255,7 @@ class CarlaGroundTruthExtractor:
             vy = s * vel_world.x + c * vel_world.y
             return Box.from_geometry(center_local[0], center_local[1], center_local[2],
                                      size[0], size[1], size[2], yaw_local, vx=vx, vy=vy, tag=tag)
-            
+
         for actor in candidates:
             if self.ego_actor_id is not None and actor.id == self.ego_actor_id:
                 continue
@@ -246,19 +264,18 @@ class CarlaGroundTruthExtractor:
                 continue
             box = box_from_actor(actor, tag=_tag_from_type_id(actor.type_id))
             box.frame_id = frame_id
-            
-            # Fix 3: Tag occluded boxes instead of deleting them
+
             is_visible = self._get_points_in_box(box, lidar_points_ego) >= self.min_points_for_visibility
             setattr(box, 'visible', is_visible)
             boxes.append(box)
-            
+
         return boxes
 
-    def _static_boxes(self, ego_transform: carla.Transform, frame_id: str, lidar_points_ego: np.ndarray) -> List[Box]:
+    def _static_boxes(self, ego_transform: carla.Transform, frame_id: str, lidar_points_ego: Optional[np.ndarray]) -> List[Box]:
         ego_pos = np.array([ego_transform.location.x, ego_transform.location.y])
         nearby = [r for r in self.static_refs
                   if np.linalg.norm(r.center_world[:2] - ego_pos) <= self.static_max_range]
-        
+
         def _box_from_static_ref(ref: StaticVehicleRef, ego_transform: carla.Transform, frame_id: str) -> Box:
             center_local = world_to_local(ego_transform, ref.center_world)
             ego_yaw = math.radians(ego_transform.rotation.yaw)
@@ -266,31 +283,32 @@ class CarlaGroundTruthExtractor:
             return Box.from_geometry(center_local[0], center_local[1], center_local[2],
                                       ref.size[0], ref.size[1], ref.size[2], yaw_local,
                                       vx=0.0, vy=0.0, tag=ref.tag, frame_id=frame_id)
-        
+
         boxes = []
         for r in nearby:
             box = _box_from_static_ref(r, ego_transform, frame_id=frame_id)
             is_visible = self._get_points_in_box(box, lidar_points_ego) >= self.min_points_for_visibility
             setattr(box, 'visible', is_visible)
             boxes.append(box)
-            
+
         return boxes
 
     def update(self, ego_transform: carla.Transform, frame_id: str,
-                lidar_points_ego: np.ndarray) -> List[Box]:
+                lidar_points_ego: Optional[np.ndarray]) -> List[Box]:
         return (self._actor_boxes(ego_transform, frame_id, lidar_points_ego) +
                  self._static_boxes(ego_transform, frame_id, lidar_points_ego))
 
 def print_results(metrics: dict) -> None:
     print()
-    print("=" * 78)
-    print("CLASS-AGNOSTIC BOX PRESENCE / ERROR EVALUATION")
-    print("=" * 78)
-    print(f"{'threshold (m)':>14}{'GT(Vis)':>10}{'num_pred':>10}{'matched':>10}"
+    print("=" * 88)
+    print("CLASS-AGNOSTIC BOX PRESENCE / ERROR EVALUATION  (misses only penalised for lidar-visible GT)")
+    print("=" * 88)
+    print(f"{'threshold (m)':>14}{'GT(Vis)':>10}{'+Unseen':>9}{'num_pred':>10}{'matched':>10}"
           f"{'recall':>10}{'precision':>10}{'F1':>8}")
     for thresh, m in metrics["per_threshold"].items():
-        print(f"{thresh:>14.1f}{m['num_gt_visible']:>10}{m['num_pred']:>10}{m['num_matched']:>10}"
-              f"{m['recall']:>10.3f}{m['precision']:>10.3f}{m['f1']:>8.3f}")
+        print(f"{thresh:>14.1f}{m['num_gt_visible']:>10}{m['num_matched_unseen']:>9}{m['num_pred']:>10}"
+              f"{m['num_matched']:>10}{m['recall']:>10.3f}{m['precision']:>10.3f}{m['f1']:>8.3f}")
+    print("  +Unseen = matched GT with too few lidar points: counted as hits, never as misses")
     print()
     print(f"TP errors at {metrics['tp_threshold']} m match threshold (matched pairs only):")
     e = metrics["tp_errors"]
@@ -303,7 +321,7 @@ def print_results(metrics: dict) -> None:
         for tag, e in metrics["tp_errors_by_tag"].items():
             print(f"    {tag:<12} ATE={e['trans_err']:.3f}  ASE={e['scale_err']:.3f}  "
                   f"AOE={e['orient_err']:.3f}  AVE={e['vel_err']:.3f}")
-    print("=" * 78)
+    print("=" * 88)
 
 def save_metrics(metrics: dict, path: Path) -> None:
     def sanitize(obj):
@@ -318,10 +336,12 @@ def save_metrics(metrics: dict, path: Path) -> None:
 
 class OnlineEvaluator:
     def __init__(self, world: carla.World, ego_actor_id: int, thresholds: Sequence[float] = hp.DIST_THRESHOLDS,
-                 tp_threshold: float = hp.TP_DISTANCE_THRESHOLD, max_range: float = 50):
+                 tp_threshold: float = hp.TP_DISTANCE_THRESHOLD, max_range: float = 50, warmup_frames: int = 40):
         self.thresholds = list(thresholds)
         self.tp_threshold = tp_threshold
         self.max_range = max_range
+        self.warmup_frames = warmup_frames      
+        self._seen = 0
         self._gt_frames: Dict[str, List[Box]] = {}
         self._pred_frames: Dict[str, List[Box]] = {}
         self.world = world
@@ -332,50 +352,61 @@ class OnlineEvaluator:
         if self.ego_actor is None:
             raise ValueError(f"Ego actor {self.ego_actor_id} not found in world.")
 
-        self.lidar_actor = None
-        for actor in self.world.get_actors().filter('sensor.lidar.*'):
-            if actor.parent and actor.parent.id == self.ego_actor_id:
-                self.lidar_actor = actor
-                break
+        self.lidar_actor = self._find_lidar()
 
-    def add_frame(self, frame_id: str, ego_state: Ego3DState, pts_sensor: np.ndarray, track_bbs: List[trackedbb], tracker_is_right_handed: bool = False):        
+    def _find_lidar(self):
+        for actor in self.world.get_actors().filter('sensor.lidar.ray_cast'):
+            if actor.parent and actor.parent.id == self.ego_actor_id:
+                return actor
+        return None
+
+    def add_frame(self, frame_id: str, ego_state: Ego3DState, pts_sensor: np.ndarray, track_bbs: List[trackedbb], tracker_is_right_handed: bool = False):
+        self._seen += 1
+        if self._seen <= self.warmup_frames:
+            return
+        if self.lidar_actor is None:
+            self.lidar_actor = self._find_lidar()
+            if self.lidar_actor is None:
+                print("WARNING: ego lidar actor not found, treating all GT as visible")
+
         gt_ego_transform = self.ego_actor.get_transform()
         if self.lidar_actor:
             lidar_transform = self.lidar_actor.get_transform()
             world_to_ego = np.asarray(gt_ego_transform.get_inverse_matrix(), dtype=float)
             sensor_to_world = np.asarray(lidar_transform.get_matrix(), dtype=float)
-            sensor_to_ego_matrix = world_to_ego @ sensor_to_world            
+            sensor_to_ego_matrix = world_to_ego @ sensor_to_world
             pts_hom = np.ones((pts_sensor.shape[0], 4))
             pts_hom[:, :3] = pts_sensor[:, :3]
             lidar_points_ego = (sensor_to_ego_matrix @ pts_hom.T).T[:, :3]
         else:
-            lidar_points_ego = pts_sensor[:, :3]
+            lidar_points_ego = None
 
         self._gt_frames[frame_id] = list(self.gt_extractor.update(gt_ego_transform, frame_id, lidar_points_ego))
-        
+
         pred_boxes : list[Box] = []
         for pb in track_bbs:
             box = Box.from_trackedbb(pb, frame_id=frame_id)
-            
+
             if tracker_is_right_handed:
                 box.translation[1] = -box.translation[1]
                 box.yaw = -box.yaw
                 if np.all(np.isfinite(box.velocity)):
                     box.velocity[1] = -box.velocity[1]
-                    
+
             pred_boxes.append(box)
         pred_boxes = global_boxes_to_ego(pred_boxes, ego_state)
         self._pred_frames[frame_id] = pred_boxes
 
         gt_boxes = self._gt_frames[frame_id]
         gt_total = len(gt_boxes)
-        gt_visible = sum(1 for b in gt_boxes if getattr(b, 'visible', True))        
+        gt_visible = sum(1 for b in gt_boxes if _is_visible(b))
         pred_in_range = sum(1 for b in pred_boxes if float(np.linalg.norm(b.translation[:2])) <= self.max_range)
         print(f"Frame {frame_id:>5} | GT: {gt_visible:>2} visible ({gt_total:>2} total) | Preds in range: {pred_in_range:>2}")
 
     def reset(self) -> None:
         self._gt_frames.clear()
         self._pred_frames.clear()
+        self._seen = 0
 
     @property
     def num_frames(self) -> int:
