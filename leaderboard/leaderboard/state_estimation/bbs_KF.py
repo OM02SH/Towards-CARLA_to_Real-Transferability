@@ -18,11 +18,70 @@ from pcdet.config import cfg, cfg_from_yaml_file
 from pcdet.datasets import DatasetTemplate
 from pcdet.models import build_network, load_data_to_gpu
 from leaderboard.state_estimation.UKF_bb import UKFBoundingBoxTracker
-from leaderboard.state_estimation.camera_calib import build_camera_calibration, lidar2ego_from_offset, lidar_offset, points_in_rotated_box
 import leaderboard.state_estimation.hyperparams as hp
+from pcdet.ops.roiaware_pool3d import roiaware_pool3d_utils
 
 DEBUG_PRINT = False
 FIX_FRAMES = True
+SYNC_DETECTOR = False   # True = main loop waits for the detector each step (measures perception without latency)
+
+def _rot_z(deg: float) -> np.ndarray:
+    c, s = math.cos(math.radians(deg)), math.sin(math.radians(deg))
+    return np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]], dtype=np.float64)
+
+def build_camera_calibration(lidar2ego: np.ndarray = None) -> dict:
+    """
+    lidar2ego: optional 4x4 (right-handed lidar frame -> right-handed ego frame).
+               Only used for 'camera2ego'; identity if omitted.
+    Returns float32 arrays, each of shape (6, 4, 4), in CAM_ORDER.
+    """
+    if lidar2ego is None:
+        lidar2ego = np.eye(4)
+
+    fx = (hp.SRC_W / 2.0) / math.tan(math.radians(hp.FOV_DEG) / 2.0)
+    fy = fx                                    
+    sx, sy = hp.OUT_W / hp.SRC_W, hp.OUT_H / hp.SRC_H
+    K = np.eye(4)
+    K[0, 0], K[1, 1] = fx * sx, fy * sy
+    K[0, 2], K[1, 2] = (hp.SRC_W / 2.0) * sx, (hp.SRC_H / 2.0) * sy
+
+    out = {k: [] for k in ("camera2lidar", "lidar2camera", "lidar2image",
+                           "camera_intrinsics", "camera2ego")}
+    for name in hp.CAM_ORDER:
+        x, y, z, yaw = hp.CAM_RIG[name]
+        cam2lidar = np.eye(4)
+        cam2lidar[:3, :3] = _rot_z(-yaw) @ hp.R_CAM_TO_LIDAR   # yaw flips sign in a right-handed frame
+        cam2lidar[:3, 3] = (x, -y, z)                        # y flips too
+        lidar2cam = np.linalg.inv(cam2lidar)
+        out["camera2lidar"].append(cam2lidar)
+        out["lidar2camera"].append(lidar2cam)
+        out["camera_intrinsics"].append(K.copy())
+        out["lidar2image"].append(K @ lidar2cam)
+        out["camera2ego"].append(lidar2ego @ cam2lidar)
+
+    return {k: np.stack(v).astype(np.float32) for k, v in out.items()}
+
+def lidar2ego_from_offset(lx: float, ly_carla: float, lz: float) -> np.ndarray:
+    m = np.eye(4)
+    m[:3, 3] = (lx, -ly_carla, lz)
+    return m
+
+def lidar_offset(lidar_transform) -> np.ndarray:
+    if lidar_transform is None:
+        return np.zeros(3)
+    if hasattr(lidar_transform, "location"):
+        l = lidar_transform.location
+        return np.array([l.x, l.y, l.z], dtype=np.float64)
+    return np.asarray(lidar_transform, dtype=np.float64)[:3, 3].copy()
+
+def points_in_rotated_box(points_xyz: np.ndarray, center_x: float, center_y: float, center_z: float,
+                           length: float, width: float, height: float, yaw_deg: float, margin: float = 0.1) -> np.ndarray:
+    boxes = np.array([[center_x, center_y, center_z, length + (margin * 2), width + (margin * 2),
+                       height + (margin * 2), np.deg2rad(yaw_deg)]])
+    points_tensor = torch.from_numpy(points_xyz).float()
+    boxes_tensor = torch.from_numpy(boxes).float()
+    box_point_masks = roiaware_pool3d_utils.points_in_boxes_cpu(points_tensor, boxes_tensor)
+    return box_point_masks[0].numpy() > 0
 
 def _dbg(*a):
     if DEBUG_PRINT:
@@ -174,7 +233,10 @@ def _vertical_overlap(z_a: float, h_a: float, z_b: float, h_b: float) -> bool:
 
 def time_to_road_departure(carla_map: carla.Map, ego: Ego3DState, dims: np.array, dt: float = hp.ROAD_EXIT_STEP_S,
                            max_time: float = hp.ROAD_EXIT_LOOKAHEAD_S) -> float:
-    x = np.array([ego.x, ego.y, ego.vx_world, ego.vy_world, ego.long_accel, ego.lat_accel,
+    c, s = math.cos(ego.yaw), math.sin(ego.yaw)
+    ax_w = c * ego.long_accel - s * ego.lat_accel      # check the sign of lat_accel in your EKF
+    ay_w = s * ego.long_accel + c * ego.lat_accel
+    x = np.array([ego.x, ego.y, ego.vx_world, ego.vy_world, ax_w, ay_w,
                   ego.yaw, ego.yaw_rate, dims[0], dims[1], ego.z, dims[2]])
 
     steps = max(1, int(max_time / dt))
@@ -183,7 +245,7 @@ def time_to_road_departure(carla_map: carla.Map, ego: Ego3DState, dims: np.array
         if i > 0:
             x = ObjectUKF.fx(x, dt)
 
-        px, py, pz = x[0], x[1], x[9]
+        px, py, pz = x[0], x[1], x[10]
         wp = carla_map.get_waypoint(carla.Location(x=px, y=py, z=pz), project_to_road=False, lane_type=carla.LaneType.Driving)
         if wp is None:
             return -1.0 if i == 0 else t
@@ -194,12 +256,12 @@ def time_to_road_departure(carla_map: carla.Map, ego: Ego3DState, dims: np.array
         if abs(lateral) + dims[1] / 2 > wp.lane_width / 2.0:
             return -1.0 if i == 0 else t
 
-        x[9] = wp_loc.z
+        x[10] = wp_loc.z
 
     return float('inf')
 
 
-def build_bbs(half_length, half_width, state: CalculatedState, master_cloud: np.ndarray,
+"""def build_bbs(half_length, half_width, state: CalculatedState, master_cloud: np.ndarray,
               radar_points, cameras, step, tracker: UKFBoundingBoxTracker,
               detector: OpenPCDetDetector, lidar_offset: np.ndarray = None):
     if lidar_offset is None:
@@ -266,7 +328,71 @@ def build_bbs(half_length, half_width, state: CalculatedState, master_cloud: np.
     tracked.extend(network_static)
     print("tracked: ", len(tracked))
     #print(tracked)
-    return tracked, obstacle_pts
+    return tracked, obstacle_pts"""
+
+def run_detection(half_length, half_width, state: CalculatedState, master_cloud: np.ndarray,
+                  radar_points, cameras, step, detector: OpenPCDetDetector, lidar_offset: np.ndarray = None):
+    if lidar_offset is None:
+        lidar_offset = np.zeros(3)
+
+    # mask in the EGO frame (master_cloud is in the lidar frame, y already flipped to right-handed)
+    ex = master_cloud[:, 0] + lidar_offset[0]
+    ey = -master_cloud[:, 1] + lidar_offset[1]
+    ez = master_cloud[:, 2] + lidar_offset[2]
+    obstacle_mask = (ex > -hp.MAX_LOCKBACK) & (ex < hp.MAX_LOOKFORWARD) & \
+                    (np.abs(ey) < hp.MAX_LOOKSIDEWAYS) & (ez > -hp.GROUND_CLEARANCE) & \
+                    ((np.abs(ex) > half_length) | (np.abs(ey) > half_width))
+    obstacle_pts = master_cloud[obstacle_mask]
+
+    if len(obstacle_pts) < hp.MIN_NUMBER_LIDAR_HITS:
+        return [], [], obstacle_pts
+
+    T = ego_to_world_matrix(state.ego_state)
+    R = T[:3, :3]
+    network_detections: list[bev_Det] = []
+    network_static: list[trackedbb] = []
+    for box in detector.infer(obstacle_pts, cameras):
+        _dbg("detected box:", box)
+        class_name = box["class_name"].strip().lower()
+        if class_name not in hp.OPENPCDET_DYNAMIC_CLASSES and class_name not in hp.OPENPCDET_STATIC_CLASSES:
+            continue
+
+        if FIX_FRAMES:
+            local = np.array([box["x"] + lidar_offset[0], -box["y"] + lidar_offset[1],
+                              box["z"] + lidar_offset[2], 1.0])
+            heading = -box["heading"]
+            vel_local = np.array([box["vx"], -box["vy"], 0.0])
+        else:
+            local = np.array([box["x"], box["y"], box["z"], 1.0])
+            heading = box["heading"]
+            vel_local = np.array([box["vx"], box["vy"], 0.0])
+
+        center_global = T @ local
+        heading_dir_global = R @ np.array([math.cos(heading), math.sin(heading), 0.0])
+        vel_global = R @ vel_local if FIX_FRAMES else vel_local
+
+        center_x, center_y, center_z = float(center_global[0]), float(center_global[1]), float(center_global[2])
+        yaw_deg = math.degrees(math.atan2(heading_dir_global[1], heading_dir_global[0]))
+        length, width, height = box["length"], box["width"], box["height"]
+        vx, vy = float(vel_global[0]), float(vel_global[1])
+
+        if class_name in hp.OPENPCDET_DYNAMIC_CLASSES:
+            matched_radars = _match_radar_points(radar_points, center_x, center_y, center_z,
+                                                 length, width, height, yaw_deg)
+            network_detections.append(bev_Det(
+                center_x=center_x, center_y=center_y, length=length, width=width, vx=vx, vy=vy,
+                yaw=yaw_deg, step=step, center_z=center_z, height=height, radar_points=matched_radars
+            ))
+        else:
+            network_static.append(trackedbb(
+                px=center_x, py=center_y, moveable=False,
+                vx=0.0, vy=0.0, speed=0.0, acceleration=0.0, ax=0.0, ay=0.0,
+                yaw=math.radians(yaw_deg), yaw_rate=0.0,
+                len=length, wid=max(width, 0.3),
+                z=center_z, height=height,
+                pos_history=[], slip_angle_deg=0.0
+            ))
+    return network_detections, network_static, obstacle_pts
 
 
 def radar_measurement_to_array(radar_data) -> np.ndarray:
@@ -295,8 +421,63 @@ def process_radar(state: CalculatedState, radar_arr: np.ndarray, sensor_transfor
     v_r_abs = v_r + u_world @ v_ego_world
     return np.column_stack([p_world, v_r_abs, u_world]).astype(np.float32)
 
+def detect_from_sensors(state: CalculatedState, lidar_stream, radar_streams, cameras, step,
+                        radar_transforms, half_length, half_width, detector: OpenPCDetDetector,
+                        lidar_offset: np.ndarray = None):
+    if cameras is None:
+        return None
+    radar_points = np.empty((0, 7), dtype=np.float32)
+    for sensor_name, radar_arr in radar_streams.items():
+        radar_points = np.vstack([radar_points, process_radar(state, radar_arr, radar_transforms[sensor_name])])
 
-def get_lidar_radar_info(state: CalculatedState, lidar_stream, radar_streams, cameras, step,
+    pts_sensor = np.asarray(lidar_stream, dtype=np.float32).reshape(-1, 4)
+    ranges = np.linalg.norm(pts_sensor[:, :3], axis=1)
+    pts_sensor = pts_sensor[ranges > hp.MIN_VALID_RANGE_M]
+    pts_sensor[:, 1] = -pts_sensor[:, 1]          # CARLA (left-handed) -> right-handed, y left
+
+    return run_detection(half_length, half_width, state, pts_sensor, radar_points, cameras, step,
+                         detector, lidar_offset)
+
+
+def compute_ttcs(tracked, state: CalculatedState, carla_map: carla.Map, half_length, half_width,
+                 half_height: float = hp.DEFAULT_EGO_HALF_HEIGHT):
+    """Runs in the main thread every step, against the CURRENT ego state and extrapolated tracks."""
+    if state.ego_state.speed > 1e-3:
+        hx = state.ego_state.vx_world / state.ego_state.speed
+        hy = state.ego_state.vy_world / state.ego_state.speed
+    else:
+        hx = math.cos(state.ego_state.yaw)
+        hy = math.sin(state.ego_state.yaw)
+    ego_ttc = np.array([state.ego_state.x, state.ego_state.y, state.ego_state.vx_world,
+                        state.ego_state.vy_world, hx, hy, half_length * 2, half_width * 2])
+
+    obs_ttc = []
+    for track in tracked:
+        if track.moveable and track.speed > 1e-3:
+            hx = track.vx / track.speed
+            hy = track.vy / track.speed
+        else:
+            hx = math.cos(track.yaw)
+            hy = math.sin(track.yaw)
+        obs_ttc.append((track.px, track.py, track.vx, track.vy, hx, hy, track.len, track.wid))
+
+    if len(obs_ttc) > 0:
+        obs_ttc = np.array(obs_ttc)
+        ttcs = TTC(ego_ttc, obs_ttc)
+        ego_z_center = state.ego_state.z + half_height
+        ego_h = half_height * 2.0
+        for i, track in enumerate(tracked):
+            if ttcs[i] == -1 and not _vertical_overlap(ego_z_center, ego_h, track.z, track.height):
+                ttcs[i] = 0.0
+    else:
+        ttcs = np.array([])
+
+    road_exit_ttc = time_to_road_departure(carla_map, state.ego_state,
+                                           np.array([half_length * 2, half_width * 2, half_height * 2]))
+    ttcs = np.append(ttcs, road_exit_ttc)
+    return ttcs, float(np.min(ttcs))
+
+"""def get_lidar_radar_info(state: CalculatedState, lidar_stream, radar_streams, cameras, step,
                          radar_transforms, half_length, half_width, tracker, carla_map: carla.Map,
                          detector: OpenPCDetDetector, half_height: float = hp.DEFAULT_EGO_HALF_HEIGHT,
                          lidar_offset: np.ndarray = None):
@@ -355,9 +536,15 @@ def get_lidar_radar_info(state: CalculatedState, lidar_stream, radar_streams, ca
     min_ttc = float(np.min(ttcs))
 
     return tracked, ttcs, min_ttc, pts
-
+"""
 
 class BBsWorker(threading.Thread):
+    """
+    The detector runs in this thread. The UKF tracker lives in the caller's thread.
+      push_frame()        hands the newest frame to the detector and never blocks.
+      get_latest_result() applies finished detections as UKF updates, extrapolates tracks
+                          to the current step, and computes TTCs.
+    """
     def __init__(self, lidar_transform, radar_transforms, half_length, half_width, half_height: float = hp.DEFAULT_EGO_HALF_HEIGHT):
         super().__init__()
         self.tracker = UKFBoundingBoxTracker()
@@ -379,24 +566,45 @@ class BBsWorker(threading.Thread):
         self.half_width = half_width
         self.half_height = half_height
         self.carla_map = CarlaDataProvider.get_map()
+        self._cur_state = None
+        self._cur_step = None
+        self._static: list[trackedbb] = []
+        self._pts = None
+        self._done = threading.Event()
+        self._done.set()
 
     def push_frame(self, state, lidar_np: np.ndarray, radar_dict: dict, cameras: np.ndarray, step):
+        self._cur_state, self._cur_step = state, step
         radar_arrays = {name: radar_measurement_to_array(m) for name, m in radar_dict.items()}
         if self.input_queue.full():
             try:
                 self.input_queue.get_nowait()
             except queue.Empty:
                 pass
+        if SYNC_DETECTOR:
+            self._done.clear()
         self.input_queue.put((state, lidar_np, radar_arrays, cameras, step))
 
     def get_latest_result(self) -> Optional[Tuple[list[trackedbb], np.ndarray, float, np.ndarray]]:
-        latest = None
-        while not self.output_queue.empty():
+        if SYNC_DETECTOR:
+            self._done.wait(timeout=30.0)
+        while True:                                   # detections -> UKF updates, in capture order
             try:
-                latest = self.output_queue.get_nowait()
+                det_step, dets, statics, pts = self.output_queue.get_nowait()
             except queue.Empty:
                 break
-        return latest
+            try:
+                self.tracker.update(dets, det_step)
+            except Exception:
+                traceback.print_exc()
+                sys.stderr.flush()
+            self._static, self._pts = statics, pts
+        if self._cur_state is None:
+            return None
+        tracked = self.tracker.predict_to(self._cur_step) + self._static   # extrapolated to NOW
+        ttcs, min_ttc = compute_ttcs(tracked, self._cur_state, self.carla_map,
+                                     self.half_length, self.half_width, self.half_height)
+        return tracked, ttcs, min_ttc, self._pts
 
     def run(self):
         while self.running:
@@ -405,16 +613,17 @@ class BBsWorker(threading.Thread):
             except queue.Empty:
                 continue
             try:
-                result = get_lidar_radar_info(state, lidar_np, radar_dict, cameras, step,
-                                              self.radar_transforms, self.half_length, self.half_width,
-                                              self.tracker, self.carla_map, self.detector,
-                                              self.half_height, self.lidar_offset)
-                #print("final final resutl", result)
+                out = detect_from_sensors(state, lidar_np, radar_dict, cameras, step,
+                                          self.radar_transforms, self.half_length, self.half_width,
+                                          self.detector, self.lidar_offset)
+                if out is not None:
+                    dets, statics, pts = out
+                    self.output_queue.put((step, dets, statics, pts))
             except Exception:
                 traceback.print_exc()
                 sys.stderr.flush()
-                continue
-            self.output_queue.put(result)
+            finally:
+                self._done.set()
 
     def stop(self):
         self.running = False

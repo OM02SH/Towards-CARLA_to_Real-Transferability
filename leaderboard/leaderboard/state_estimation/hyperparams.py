@@ -159,6 +159,24 @@ def rebuild():
 rebuild()
 
 ################ Bounding Boxes ################
+
+
+CAM_ORDER = ["cam_00", "cam_01", "cam_02", "cam_03", "cam_04", "cam_05"]
+CAM_RIG = {
+    "cam_00": (0.8, -0.3, -0.18, 0.0),
+    "cam_01": (0.8,  0.3, -0.18, 0.0),
+    "cam_02": (0.0, -0.46, -0.18, -90.0),
+    "cam_03": (0.0,  0.46, -0.18, 90.0),
+    "cam_04": (-0.8, -0.3, -0.18, 180.0),
+    "cam_05": (-0.8, 0.3, -0.18, 180.0),
+}
+SRC_W, SRC_H, FOV_DEG = 1408, 376, 103.744808   # raw CARLA camera
+OUT_W, OUT_H = 704, 192                          # after cv2.resize in SensorDataParser
+
+R_CAM_TO_LIDAR = np.array([[0, 0, 1],
+                            [-1, 0, 0],
+                            [0, -1, 0]], dtype=np.float64)
+
 GROUND_CLEARANCE = 0.3
 MAX_LOCKBACK = 50.0
 MAX_LOOKFORWARD = 50.0
@@ -176,7 +194,7 @@ OPENPCDET_TOOLS_DIR = os.path.join(_THIS_DIR, "../../../pcdet")
 
 OPENPCDET_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 OPENPCDET_DYNAMIC_CLASSES = {"car", "truck", "pedestrian", "bus", 'motorcycle','bicycle', 'train'}
-OPENPCDET_STATIC_CLASSES = {"barrier", "traffic_cone"}
+OPENPCDET_STATIC_CLASSES = {"wall", "fence", "guard_rail"}
 OPENPCDET_SCORE_THRESH = 0.1
 OPENPCDET_BOX_MARGIN_M = 0.3     
 cam_intrinsic = np.array([

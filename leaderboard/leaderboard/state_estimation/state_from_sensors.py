@@ -1,9 +1,6 @@
 import math
 import carla
 import numpy as np
-import time
-#from leaderboard_codes.metrics_calc_with_sensors.ego_UKF import EgoUnscentedKalmanFilterStateEstimator
-#from leaderboard_codes.metrics_calc_with_sensors.ego_EKF import EgoExtendedKalmanFilterStateEstimator
 from leaderboard.state_estimation.ego_EKF_3D import  EgoErrorStateEKF3D
 from leaderboard.state_estimation.sensor_dataclasses import CalculatedState
 from leaderboard.state_estimation.bbs_KF import BBsWorker
@@ -11,7 +8,7 @@ from leaderboard.state_estimation.real_test_BBs import OnlineEvaluator
 from leaderboard.state_estimation.traffic_light_worker import TrafficLightWorker
 from leaderboard.state_estimation.real_test_ego import EgoStateOnlineEvaluator
 import leaderboard.state_estimation.hyperparams as hp
-#from leaderboard.state_estimation.ekf_tuning import SensorRecorder
+
 Gravity = 9.81
 min_valid_range_m = 0.5
 
@@ -127,16 +124,15 @@ class CarlaStateEstimatorEngine:
         frame = sensors_data["yolo_camera"]
         if (imu_data == None):
             raise ValueError("Sensor data IMU must be provided for computation.")
+        
         state = CalculatedState()
         self.speed_limit = vehicle.get_speed_limit()
-        #wheel = EgoErrorStateEKF3D.get_simulated_speedometer(vehicle)
         state.ego_state = self.ekf.compute(dt, vehicle, imu_data, gnss_data, lidar_data, step)
-        #self.rec.add(step, dt, imu_data, gnss_data, lidar_data is not None, wheel, vehicle)
-        #self.rec.save("route_042.npz", self.ekf) 
+
         lidar_np = np.frombuffer(lidar_data.raw_data, dtype=np.float32).reshape(-1, 4).copy()
         self.tracker.push_frame(state, lidar_np, radar_datas, cameras, step)
         result = self.tracker.get_latest_result()
-        print("state from sensors resutlt: ", result)
+
         if result is not None:
             state.detected_objects, state.ttcs, state.min_ttc, pts = result
             self._last_result = result
@@ -144,19 +140,24 @@ class CarlaStateEstimatorEngine:
             state.detected_objects, state.ttcs, state.min_ttc, pts = self._last_result
         else:
             state.detected_objects, state.ttcs, state.min_ttc, pts = [], np.array([]), float('inf'), None
+
         if frame is not None: self.tlw.push_frame(frame)
-        self.state.light = self.tlw.light_state()
+        state.light = self.tlw.light_state()  
         self.get_rest_info(state)
+
         self.state = state
         type(self)._last_state = state
+
         self.ego_evaluator.add_frame(frame_id=str(step),ego_state=self.state.ego_state)
-        self.ego_evaluator.print_report()
+        if step % 100 == 0: self.ego_evaluator.print_report()
+        
         pts_sensor = np.frombuffer(lidar_data.raw_data, dtype=np.float32).reshape(-1, 4).copy()
         ranges = np.linalg.norm(pts_sensor[:, :3], axis=1)
         pts_sensor = pts_sensor[ranges>hp.MIN_VALID_RANGE_M]
-        print("det: ", len(state.detected_objects))
-        self.bbs_evaluator.add_frame(frame_id=str(step),pts_sensor=pts_sensor, track_bbs=state.detected_objects, ego_state=self.state.ego_state)
-        self.bbs_evaluator.print_report()
+
+        self.bbs_evaluator.add_frame(frame_id=str(step), pts_sensor=pts_sensor,
+            track_bbs=[b for b in state.detected_objects if b.moveable], ego_state=self.state.ego_state)
+        if step % 100 == 0: self.bbs_evaluator.print_report()
 
     @staticmethod
     def get_calculated_state() -> CalculatedState:

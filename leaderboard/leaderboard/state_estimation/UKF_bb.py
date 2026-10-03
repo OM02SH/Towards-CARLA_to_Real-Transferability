@@ -14,7 +14,7 @@ def normalize_angle(angle: float) -> float:
 def robust_sqrt(matrix: np.ndarray) -> np.ndarray:
     sym = 0.5 * (matrix + matrix.T)
     try:
-        return np.linalg.cholesky(sym)
+        return np.linalg.cholesky(sym).T
     except np.linalg.LinAlgError:
         vals, vecs = np.linalg.eigh(sym)
         vals = np.maximum(vals, 1e-10)
@@ -88,7 +88,7 @@ class ObjectUKF:
         self.radar_gate_threshold = chi2.ppf(radar_gate_prob, df=1)
         self._predicted_sigmas_valid = False
 
-        sigma_points = MerweScaledSigmaPoints(n=DIM_X, alpha=0.1, beta=2.0, kappa=0.0, sqrt_method=robust_sqrt)
+        sigma_points = MerweScaledSigmaPoints(n=DIM_X, alpha=0.5, beta=2.0, kappa=0.0, sqrt_method=robust_sqrt)
         self.ukf = UnscentedKalmanFilter(dim_x=DIM_X, dim_z=7, dt=dt, fx=self.fx, hx=self.hx_lidar,
                     points=sigma_points, x_mean_fn=self.state_mean, residual_x=self.state_residual)
 
@@ -466,6 +466,27 @@ class UKFTrackBB2D:
         self.pos_history.append((self.px, self.py, timestamp))
         self.slip_angle_deg = math.degrees(self.ukf.sideslip)
 
+    def predicted_data(self, dt_ahead: float) -> trackedbb:
+        """Track state extrapolated dt_ahead seconds past the last UKF update (mean only)."""
+        x = self.ukf.ukf.x
+        if dt_ahead > 0:
+            x = ObjectUKF.fx(x, dt_ahead)
+        raw_speed = math.hypot(float(x[2]), float(x[3]))
+        yaw = normalize_angle(float(x[YAW_IDX]))
+        if raw_speed < self.stationary_speed_thresh:
+            vx = vy = speed = ax = ay = acceleration = 0.0
+        else:
+            vx, vy, ax, ay = float(x[2]), float(x[3]), float(x[4]), float(x[5])
+            speed = raw_speed
+            acceleration = (vx * ax + vy * ay) / speed
+        slip = 0.0 if raw_speed < 0.5 * self.ukf.yaw_align_min_speed else \
+            math.degrees(normalize_angle(math.atan2(x[3], x[2]) - yaw))
+        return trackedbb(px=float(x[0]), py=float(x[1]), moveable=True,
+                         vx=vx, vy=vy, speed=speed, acceleration=acceleration, ax=ax, ay=ay,
+                         yaw=yaw, yaw_rate=float(x[7]), len=float(x[8]), wid=float(x[9]),
+                         z=float(x[10]), height=float(x[11]),
+                         pos_history=self.pos_history, slip_angle_deg=slip)
+
     def get_all_data(self) -> trackedbb:
         return trackedbb(px=self.px, py=self.py, moveable=True,
                 vx=self.vx, vy=self.vy, speed=self.speed,
@@ -477,28 +498,30 @@ class UKFTrackBB2D:
 class UKFBoundingBoxTracker:
     def __init__(self, max_match_dist_m: float = 3.0, max_missed_ticks: int = 10, dt: float = 0.05,
                  gate_prob: float = 0.95, yaw_weight: float = 0.15, size_weight: float = 0.1,
-                 min_hits_to_confirm: int = 5, max_tentative_misses: int = 3):
+                 min_hits_to_confirm: int = 3, max_tentative_misses: int = 3, max_coast_s: float = 1.0):
         self.tracks: list[UKFTrackBB2D] = []
         self._next_id = 0
         self.max_match_dist_m = max_match_dist_m
-        self.max_missed_ticks = max_missed_ticks
+        self.max_missed_ticks = max_missed_ticks      # now counted in DETECTOR frames
         self.gate_threshold = chi2.ppf(gate_prob, df=2)
-        self.dt = dt
+        self.dt = dt                                  # must equal the sim fixed delta
         self.yaw_weight = yaw_weight
         self.size_weight = size_weight
         self.min_hits_to_confirm = min_hits_to_confirm
         self.max_tentative_misses = max_tentative_misses
+        self.max_coast_s = max_coast_s
+        self._last_step: Optional[float] = None       # step of the last detector frame
 
     @property
     def visible_tracks(self) -> list[UKFTrackBB2D]:
         return [t for t in self.tracks if t.confirmed]
 
-    def _spawn_track(self, detection, step: float, dt: float) -> None:
-        track = UKFTrackBB2D(self._next_id, detection, dt, min_hits_to_confirm=self.min_hits_to_confirm)
+    def _spawn_track(self, detection, step: float) -> None:
+        track = UKFTrackBB2D(self._next_id, detection, self.dt, min_hits_to_confirm=self.min_hits_to_confirm)
         self._next_id += 1
         radar_meas_list = [(float(r[3]), np.asarray(r[4:7])) for r in detection.radar_points]
         track.ukf.fuse_radar_only(radar_meas_list)
-        track.update_metadata(step * dt)
+        track.update_metadata(step * self.dt)
         self.tracks.append(track)
 
     def associate(self, detections):
@@ -535,11 +558,25 @@ class UKFBoundingBoxTracker:
             matched_detections.add(j)
         return matches, matched_tracks, matched_detections
 
-    def update(self, detections, step: float, dt: Optional[float] = None):
-        dt = self.dt if dt is None else dt
-        timestamp = step * dt
-        for track in self.tracks:
-            track.ukf.predict(dt=dt)
+    def predict_to(self, step: float) -> list[trackedbb]:
+        """Confirmed tracks extrapolated to `step`. Does not modify filter state, so call it every step."""
+        if self._last_step is None:
+            return []
+        dt_ahead = max(0.0, (step - self._last_step) * self.dt)
+        if dt_ahead > self.max_coast_s:      # detector stalled: stop publishing stale tracks
+            return []
+        return [t.predicted_data(dt_ahead) for t in self.visible_tracks]
+
+    def update(self, detections, step: float):
+        if self._last_step is not None:
+            if step < self._last_step:
+                return self.visible_tracks
+            gap = (step - self._last_step) * self.dt
+            if gap > 0:
+                for track in self.tracks:
+                    track.ukf.predict(dt=gap)
+        self._last_step = step
+        timestamp = step * self.dt
         if not detections:
             self.prune(None)
             for track in self.tracks:
@@ -547,7 +584,7 @@ class UKFBoundingBoxTracker:
             return self.visible_tracks
         if not self.tracks:
             for detection in detections:
-                self._spawn_track(detection, step, dt)
+                self._spawn_track(detection, step)
             return self.visible_tracks
         matches, matched_tracks, matched_detections = self.associate(detections)
         for (track_idx, det_idx) in matches:
@@ -572,7 +609,7 @@ class UKFBoundingBoxTracker:
                 track.update_metadata(timestamp)
         for j, detection in enumerate(detections):
             if j not in matched_detections:
-                self._spawn_track(detection, step, dt)
+                self._spawn_track(detection, step)
         return self.visible_tracks
 
     def prune(self, matched_tracks):
