@@ -9,16 +9,16 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 ################ Ego state ##################
 G = 9.81
 
-R_GNSS = np.diag([1.5**2, 1.5**2, 1.0**2])
+R_GNSS = np.diag([1**2, 1**2, 0.75**2])
 SIGMA_COMPASS = math.radians(5.0)
 R_COMPASS = np.array([[SIGMA_COMPASS**2]])
 R_WHEEL = np.diag([0.2**2, 0.10**2])
 
-SIGMA_GRAVITY_DIRECTION = 0.15
+SIGMA_GRAVITY_DIRECTION = 0.1
 R_GRAVITY = np.eye(3) * SIGMA_GRAVITY_DIRECTION**2
 
 SIGMA_GYRO = math.radians(0.5)       
-SIGMA_ACCEL = 0.4 
+SIGMA_ACCEL = 0.35 
 SIGMA_GYRO_BIAS_RW = math.radians(0.01)
 SIGMA_ACCEL_BIAS_RW = 0.01
 SIGMA_WHEEL_BIAS_RW = 0.03           
@@ -31,7 +31,7 @@ MAX_HISTORY = 20
 MIN_HISTORY = 5
 R_GNSS_VEL = np.diag([1.5**2, 1.5**2, 1.5**2])
 
-SIGMA_SLAM_POS = 0.04
+SIGMA_SLAM_POS = 0.03
 SIGMA_SLAM_ATT = math.radians(1.0)
 
 R_SLAM_POS = np.eye(3) * SIGMA_SLAM_POS**2
@@ -82,7 +82,7 @@ OPENPCDET_TOOLS_DIR = os.path.join(_THIS_DIR, "../../../pcdet")
 OPENPCDET_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 OPENPCDET_DYNAMIC_CLASSES = {"car", "truck", "pedestrian", "bus", 'motorcycle','bicycle', 'train'}
 OPENPCDET_STATIC_CLASSES = {"barrier", "traffic_cone"}
-OPENPCDET_SCORE_THRESH = 0.15
+OPENPCDET_SCORE_THRESH = 0.1
 OPENPCDET_BOX_MARGIN_M = 0.3     
 cam_intrinsic = np.array([
     [552.554261, 0.0, 704.0, 0.0],
