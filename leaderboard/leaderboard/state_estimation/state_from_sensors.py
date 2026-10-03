@@ -11,6 +11,7 @@ from leaderboard.state_estimation.real_test_BBs import OnlineEvaluator
 from leaderboard.state_estimation.traffic_light_worker import TrafficLightWorker
 from leaderboard.state_estimation.real_test_ego import EgoStateOnlineEvaluator
 import leaderboard.state_estimation.hyperparams as hp
+from leaderboard.state_estimation.ekf_tuning import SensorRecorder
 Gravity = 9.81
 min_valid_range_m = 0.5
 
@@ -54,6 +55,7 @@ class CarlaStateEstimatorEngine:
         self.tlw.start()
         self.tracker.start()
         self._last_result = None
+        self.rec = SensorRecorder(self.map.transform_to_geolocation(carla.Location(0,0,0)))
 
     def get_rest_info(self, state : CalculatedState):
         cr, sr = math.cos(state.ego_state.roll_rad), math.sin(state.ego_state.roll_rad)
@@ -127,7 +129,10 @@ class CarlaStateEstimatorEngine:
             raise ValueError("Sensor data IMU must be provided for computation.")
         state = CalculatedState()
         self.speed_limit = vehicle.get_speed_limit()
-        state.ego_state = self.ekf.compute(dt, vehicle, imu_data, gnss_data, lidar_data, step)
+        wheel = EgoErrorStateEKF3D.get_simulated_speedometer(vehicle)
+        state.ego_state = self.ekf.compute(dt, vehicle, imu_data, gnss_data, lidar_data, step, wheel_speed=wheel)
+        self.rec.add(step, dt, imu_data, gnss_data, lidar_data is not None, wheel, vehicle)
+        self.rec.save("route_042.npz", self.ekf) 
         lidar_np = np.frombuffer(lidar_data.raw_data, dtype=np.float32).reshape(-1, 4).copy()
         self.tracker.push_frame(state, lidar_np, radar_datas, cameras, step)
         result = self.tracker.get_latest_result()
