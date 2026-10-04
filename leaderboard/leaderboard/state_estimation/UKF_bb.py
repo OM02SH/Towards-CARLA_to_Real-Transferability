@@ -450,7 +450,7 @@ class UKFTrackBB2D:
                 vx=self.vx, vy=self.vy, speed=self.speed,
                 acceleration=self.acceleration, ax=self.ax, ay=self.ay,
                 yaw=self.yaw, yaw_rate=self.yaw_rate, len=self.len, wid=self.wid,
-                z=self.z, height=self.height, score=self.score
+                z=self.z, height=self.height, score=self.score,
                 pos_history=self.pos_history, slip_angle_deg=self.slip_angle_deg)
 
 class UKFBoundingBoxTracker:
