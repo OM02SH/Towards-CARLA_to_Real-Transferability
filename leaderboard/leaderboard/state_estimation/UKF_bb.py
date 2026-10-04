@@ -382,6 +382,7 @@ class UKFTrackBB2D:
         self.wid = detection.width
         self.z = detection.center_z
         self.height = detection.height
+        self.score = detection.score
         self.px = 0.0
         self.py = 0.0
         self.missed_ticks = 0
@@ -441,7 +442,7 @@ class UKFTrackBB2D:
         return trackedbb(px=float(x[0]), py=float(x[1]), moveable=True,
                          vx=vx, vy=vy, speed=speed, acceleration=acceleration, ax=ax, ay=ay,
                          yaw=yaw, yaw_rate=float(x[7]), len=float(x[8]), wid=float(x[9]),
-                         z=float(x[10]), height=float(x[11]),
+                         z=float(x[10]), height=float(x[11]), score=self.score,
                          pos_history=self.pos_history, slip_angle_deg=slip)
 
     def get_all_data(self) -> trackedbb:
@@ -449,7 +450,7 @@ class UKFTrackBB2D:
                 vx=self.vx, vy=self.vy, speed=self.speed,
                 acceleration=self.acceleration, ax=self.ax, ay=self.ay,
                 yaw=self.yaw, yaw_rate=self.yaw_rate, len=self.len, wid=self.wid,
-                z=self.z, height=self.height,
+                z=self.z, height=self.height, score=self.score
                 pos_history=self.pos_history, slip_angle_deg=self.slip_angle_deg)
 
 class UKFBoundingBoxTracker:
@@ -468,6 +469,8 @@ class UKFBoundingBoxTracker:
         self.max_tentative_misses = max_tentative_misses
         self.max_coast_s = max_coast_s
         self._last_step: Optional[float] = None       # step of the last detector frame
+        self.spawn_score = 0.3
+        self.max_publish_misses = 3
 
     @property
     def visible_tracks(self) -> list[UKFTrackBB2D]:
@@ -480,6 +483,9 @@ class UKFBoundingBoxTracker:
         track.ukf.fuse_radar_only(radar_meas_list)
         track.update_metadata(step * self.dt)
         self.tracks.append(track)
+
+    def _may_spawn(self, detection) -> bool:
+        return float(getattr(detection, "score", 1.0)) >= self.spawn_score
 
     def associate(self, detections):
         if not self.tracks or not detections:
@@ -520,10 +526,8 @@ class UKFBoundingBoxTracker:
         if self._last_step is None:
             return []
         dt_ahead = max(0.0, (step - self._last_step) * self.dt)
-        if dt_ahead > self.max_coast_s:      # detector stalled: stop publishing stale tracks
-            return []
-        return [t.predicted_data(dt_ahead) for t in self.visible_tracks]
-
+        if dt_ahead > self.max_coast_s:      return []
+        return [t.predicted_data(dt_ahead) for t in self.visible_tracks if t.missed_ticks <= self.max_publish_misses]
     def update(self, detections, step: float):
         if self._last_step is not None:
             if step < self._last_step:
@@ -541,12 +545,14 @@ class UKFBoundingBoxTracker:
             return self.visible_tracks
         if not self.tracks:
             for detection in detections:
-                self._spawn_track(detection, step)
+                if self._may_spawn(detection):
+                    self._spawn_track(detection, step)
             return self.visible_tracks
         matches, matched_tracks, matched_detections = self.associate(detections)
         for (track_idx, det_idx) in matches:
             track: UKFTrackBB2D = self.tracks[track_idx]
             detection = detections[det_idx]
+            track.score = detection.score
             radar_meas_list = [(float(r[3]), np.asarray(r[4:7])) for r in detection.radar_points]
             vel_meas = (detection.vx, detection.vy)
             track.ukf.update_combined((detection.center_x, detection.center_y, math.radians(detection.yaw),
@@ -565,7 +571,7 @@ class UKFBoundingBoxTracker:
             if track.missed_ticks > 0:
                 track.update_metadata(timestamp)
         for j, detection in enumerate(detections):
-            if j not in matched_detections:
+            if j not in matched_detections and self._may_spawn(detection):
                 self._spawn_track(detection, step)
         return self.visible_tracks
 

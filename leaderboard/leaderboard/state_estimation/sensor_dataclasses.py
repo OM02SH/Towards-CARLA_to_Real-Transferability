@@ -75,6 +75,7 @@ class trackedbb:
     z: float = 0.0
     height: float = 1.5
     pos_history: list[tuple[float, float, float]] = field(default_factory=list)
+    score:float = 0.0
 
 @dataclass
 class bev_Det:
@@ -89,6 +90,7 @@ class bev_Det:
     radar_points: list = field(default_factory=list)
     vx: float = 0.0
     vy: float = 0.0
+    score: float = 0.0
 
 @dataclass
 class Ego3DState:

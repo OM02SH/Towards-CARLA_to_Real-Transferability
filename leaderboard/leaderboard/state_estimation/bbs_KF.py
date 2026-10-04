@@ -381,7 +381,7 @@ def run_detection(half_length, half_width, state: CalculatedState, master_cloud:
                                                  length, width, height, yaw_deg)
             network_detections.append(bev_Det(
                 center_x=center_x, center_y=center_y, length=length, width=width, vx=vx, vy=vy,
-                yaw=yaw_deg, step=step, center_z=center_z, height=height, radar_points=matched_radars
+                yaw=yaw_deg, step=step, center_z=center_z, height=height, radar_points=matched_radars, score=box["score"]
             ))
         else:
             network_static.append(trackedbb(
@@ -389,7 +389,7 @@ def run_detection(half_length, half_width, state: CalculatedState, master_cloud:
                 vx=0.0, vy=0.0, speed=0.0, acceleration=0.0, ax=0.0, ay=0.0,
                 yaw=math.radians(yaw_deg), yaw_rate=0.0,
                 len=length, wid=max(width, 0.3),
-                z=center_z, height=height,
+                z=center_z, height=height, score= box["score"],
                 pos_history=[], slip_angle_deg=0.0
             ))
     return network_detections, network_static, obstacle_pts
