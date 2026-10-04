@@ -967,7 +967,7 @@ class TrainingConfig(BaseConfig):
                 return "rtx3080"
             else:
                 # Fallback to raw name to avoid crashing on unrecognized GPUs.
-                LOG.warning("Unknown GPU name: %s. Using raw name as fallback.", name)
+                #LOG.warning("Unknown GPU name: %s. Using raw name as fallback.", name)
                 return name.replace(" ", "_")
         except RuntimeError:
             return ""
