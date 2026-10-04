@@ -136,7 +136,9 @@ class CarlaStateEstimatorEngine:
         rec.add(step, dt, imu_data, gnss_data, lidar_data is not None, wheel, vehicle)
         rec.save(f"route_{step}.npz", self.ekf) 
         if step != 1: self.ego_evaluator.add_frame(frame_id=str(step),ego_state=self.state.ego_state)
-        if (step+1) % 100 == 0: self.ego_evaluator.print_report()
+        if (step+1) % 100 == 0: 
+            self.ekf.nis_summary()
+            self.ego_evaluator.print_report()
 
         def _vec(v) -> np.ndarray:
             return np.array([v.x, v.y, v.z], dtype=float)

@@ -263,6 +263,7 @@ class ObjectUKF:
             if not self._radar_innovation_ok(v_r_abs, u_world):
                 continue
             valid.append((v_r_abs, u_world))
+        print("vaild radar: ", len(valid))
         return valid
 
     def update_combined(self, lidar_meas: tuple, radar_meas_list: list[tuple],

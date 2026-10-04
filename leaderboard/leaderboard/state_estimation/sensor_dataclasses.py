@@ -28,6 +28,17 @@ class SlamUpdateResult:
     reason: str = ""
 
 @dataclass
+class SlamOutput:
+    """What the EKF receives from the SLAM worker. Everything is time-stamped by frame_id."""
+    frame_id: int                     # id of the lidar frame the pose belongs to (EKF step)
+    p: np.ndarray                     # (3,) position of the *vehicle* in the SLAM world frame
+    q: np.ndarray                     # (4,) [w, x, y, z]
+    trans_shape: np.ndarray = field(default_factory=lambda: np.eye(3))  # >=1 inflation shape (vehicle frame)
+    map_epoch: int = 0                # increments on every loop-closure optimisation (frame jump)
+    fitness: float = 0.0
+    inlier_rmse: float = 0.0
+
+@dataclass
 class StaticVehicleRef:
     env_id: int
     tag: str

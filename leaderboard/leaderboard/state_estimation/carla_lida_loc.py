@@ -11,20 +11,9 @@ import open3d as o3d
 import carla
 from scipy.spatial.transform import Rotation
 
-from leaderboard.state_estimation.sensor_dataclasses import SlamUpdateResult, Keyframe
+from leaderboard.state_estimation.sensor_dataclasses import SlamUpdateResult, Keyframe, SlamOutput
 import leaderboard.state_estimation.hyperparams as hp
 
-
-@dataclass
-class SlamOutput:
-    """What the EKF receives from the SLAM worker. Everything is time-stamped by frame_id."""
-    frame_id: int                     # id of the lidar frame the pose belongs to (EKF step)
-    p: np.ndarray                     # (3,) position of the *vehicle* in the SLAM world frame
-    q: np.ndarray                     # (4,) [w, x, y, z]
-    trans_shape: np.ndarray = field(default_factory=lambda: np.eye(3))  # >=1 inflation shape (vehicle frame)
-    map_epoch: int = 0                # increments on every loop-closure optimisation (frame jump)
-    fitness: float = 0.0
-    inlier_rmse: float = 0.0
 
 
 def translation_cov_shape(info6: np.ndarray, A_R: np.ndarray, cap: float) -> np.ndarray:
@@ -84,7 +73,6 @@ class CarlaPoseGraphSLAM:
         elif hp.USE_ROBUST_KERNEL and hasattr(reg, "TukeyLoss"):
             self._estimator = reg.TransformationEstimationPointToPlane(reg.TukeyLoss(k=hp.ICP_ROBUST_K))
 
-    # ------------------------------------------------------------------ preprocessing
     @staticmethod
     def _parse_raw_lidar(lidar_data: carla.LidarMeasurement) -> np.ndarray:
         raw = np.frombuffer(lidar_data.raw_data, dtype=np.float32)
@@ -135,7 +123,6 @@ class CarlaPoseGraphSLAM:
         pcd = pcd.voxel_down_sample(voxel_size=self.voxel_size)
         return self._prepare(pcd)
 
-    # ------------------------------------------------------------------ registration
     def _icp(self, source, target, max_dist, init, max_iter):
         reg = o3d.pipelines.registration
         return reg.registration_icp(source, target, max_dist, init, self._estimator,
@@ -164,7 +151,6 @@ class CarlaPoseGraphSLAM:
             closed_any = True
         return closed_any
 
-    # ------------------------------------------------------------------ submap
     def _rebuild_submap(self) -> None:
         """Merge the last N keyframes into the frame of the newest keyframe (scan-to-submap)."""
         j = len(self.keyframes) - 1
@@ -180,7 +166,6 @@ class CarlaPoseGraphSLAM:
     def _target(self):
         return self._submap if self._submap is not None else self.keyframes[-1].pcd
 
-    # ------------------------------------------------------------------ keyframes
     def _insert_keyframe(self, current_pcd, A: np.ndarray) -> bool:
         j = len(self.keyframes)
         prev_kf = self.keyframes[-1]
@@ -229,7 +214,6 @@ class CarlaPoseGraphSLAM:
         x, y, z, w = Rotation.from_matrix(pose[0:3, 0:3]).as_quat()
         return p, np.array([w, x, y, z], dtype=float)
 
-    # ------------------------------------------------------------------ main entry
     def process_lidar(self, lidar_data, predicted_pose: Optional[np.ndarray] = None,
                       dynamic_boxes: Optional[np.ndarray] = None) -> SlamUpdateResult:
         current_pcd = self._make_pcd(lidar_data, dynamic_boxes)
@@ -331,29 +315,3 @@ class AsyncSlamWorker(threading.Thread):
 
     def stop(self):
         self.running = False
-
-
-# ---------------------------------------------------------------------------
-# Helper: dynamic-object boxes from the CARLA world (ground truth, sim only).
-# In the real system replace this with your detector's boxes (same format).
-# ---------------------------------------------------------------------------
-def carla_dynamic_boxes(world: "carla.World", ego: "carla.Vehicle", max_range: float = 80.0) -> np.ndarray:
-    """(N,7) [cx,cy,cz,l,w,h,yaw] of moving vehicles/pedestrians in the ego FLU frame."""
-    ego_tf = ego.get_transform()
-    inv = ego_tf.get_inverse()
-    rows = []
-    for actor in list(world.get_actors().filter("vehicle.*")) + list(world.get_actors().filter("walker.pedestrian.*")):
-        if actor.id == ego.id:
-            continue
-        v = actor.get_velocity()
-        if (v.x ** 2 + v.y ** 2 + v.z ** 2) ** 0.5 < hp.DYNAMIC_MIN_SPEED:
-            continue
-        tf = actor.get_transform()
-        bb = actor.bounding_box
-        c_world = tf.transform(bb.location)
-        c = inv.transform(c_world)                              # ego CARLA frame (x fwd, y right)
-        if (c.x ** 2 + c.y ** 2) ** 0.5 > max_range:
-            continue
-        rel_yaw = np.radians(tf.rotation.yaw - ego_tf.rotation.yaw)
-        rows.append([c.x, -c.y, c.z, 2 * bb.extent.x, 2 * bb.extent.y, 2 * bb.extent.z, -rel_yaw])
-    return np.asarray(rows, dtype=float).reshape(-1, 7)

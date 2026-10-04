@@ -12,12 +12,11 @@ from leaderboard.state_estimation.sensor_dataclasses import bev_Det, trackedbb, 
 from leaderboard.state_estimation.TwoDimTTC import TTC
 from srunner.scenariomanager.timer import GameTime
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
-from leaderboard.state_estimation.UKF_bb import ObjectUKF
 import torch
 from pcdet.config import cfg, cfg_from_yaml_file
 from pcdet.datasets import DatasetTemplate
 from pcdet.models import build_network, load_data_to_gpu
-from leaderboard.state_estimation.UKF_bb import UKFBoundingBoxTracker
+from leaderboard.state_estimation.UKF_bb import UKFBoundingBoxTracker, ObjectUKF
 import leaderboard.state_estimation.hyperparams as hp
 from pcdet.ops.roiaware_pool3d import roiaware_pool3d_utils
 
