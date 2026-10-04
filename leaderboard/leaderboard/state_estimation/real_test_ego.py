@@ -86,7 +86,8 @@ def evaluate_frames(gt_frames: Dict[str, Ego3DState], pred_frames: Dict[str, Ego
 
     fields = {}
     for name in hp.LINEAR_FIELDS + hp.ANGLE_FIELDS:
-        err = col(pred_frames, name) - col(gt_frames, name)
+        err = (col(pred_frames, name) 
+               - col(gt_frames, name))
         if name in hp.ANGLE_FIELDS:
             err = np.degrees(wrap_angle_rad(err))
         fields[name] = {"unit": _unit(name), **_stats(err)}
