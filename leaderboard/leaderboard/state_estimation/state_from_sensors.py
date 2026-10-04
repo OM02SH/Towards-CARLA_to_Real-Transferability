@@ -133,10 +133,11 @@ class CarlaStateEstimatorEngine:
         rec = SensorRecorder(self.geo_ref)
         wheel = EgoErrorStateEKF3D.get_simulated_speedometer(vehicle)   
         state.ego_state = self.ekf.compute(dt, vehicle, imu_data, gnss_data, lidar_data, step, wheel_speed= wheel)
+        print(state.ego_state)
         rec.add(step, dt, imu_data, gnss_data, lidar_data is not None, wheel, vehicle)
         rec.save(f"route_{step}.npz", self.ekf) 
         self.ego_evaluator.add_frame(frame_id=str(step),ego_state=self.state.ego_state)
-        if step % 100 == 0: self.ego_evaluator.print_report()
+        if step % 10 == 0: self.ego_evaluator.print_report()
 
         def _vec(v) -> np.ndarray:
             return np.array([v.x, v.y, v.z], dtype=float)
@@ -193,7 +194,7 @@ class CarlaStateEstimatorEngine:
         pts_sensor = pts_sensor[ranges>hp.MIN_VALID_RANGE_M]
         self.bbs_evaluator.add_frame(frame_id=str(step), pts_sensor=pts_sensor,
             track_bbs=[b for b in state.detected_objects if b.moveable], ego_state=gt_ego_state)
-        if step % 100 == 0: self.bbs_evaluator.print_report()
+        if step % 10 == 0: self.bbs_evaluator.print_report()
 
     @staticmethod
     def get_calculated_state() -> CalculatedState:
