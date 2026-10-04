@@ -489,12 +489,11 @@ class EgoErrorStateEKF3D:
                 old = next(iter(self._frame_pose))
                 self._frame_pose.pop(old)
                 self._frame_time.pop(old, None)
-            if not self.stationary:                 # no point scan-matching while standing still
+            if not self.stationary:                 
                 self.slam.push_frame(lidar_data, self._frame_pose[step], step, dynamic_boxes)
 
         res = self.slam.get_latest_result()
-        if res is None:
-            return
+        if res is None: return
         self.slam_log.append((step, res))
         if res.frame_id not in self._frame_pose:
             return
