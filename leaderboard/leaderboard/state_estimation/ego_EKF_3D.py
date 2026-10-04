@@ -699,9 +699,9 @@ class EgoErrorStateEKF3D:
             if np.isfinite(r["nis"]):
                 s["sum"] += r["nis"]
                 s["fin"] += 1
-        return {k: {"n": v["n"], "accept_rate": v["acc"] / v["n"],
+        print({k: {"n": v["n"], "accept_rate": v["acc"] / v["n"],
                     "mean_nis_per_dof": (v["sum"] / (v["fin"] * v["dof"])) if v["fin"] else float("nan")}
-                for k, v in out.items()}
+                for k, v in out.items()})
 
     def shutdown(self) -> None:
         if hasattr(self.slam, "stop"):
