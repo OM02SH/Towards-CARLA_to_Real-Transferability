@@ -2,12 +2,13 @@ import math
 import carla
 import numpy as np
 from leaderboard.state_estimation.ego_EKF_3D import  EgoErrorStateEKF3D
-from leaderboard.state_estimation.sensor_dataclasses import CalculatedState
+from leaderboard.state_estimation.sensor_dataclasses import CalculatedState, Ego3DState
 from leaderboard.state_estimation.bbs_KF import BBsWorker
 from leaderboard.state_estimation.real_test_BBs import OnlineEvaluator
 from leaderboard.state_estimation.traffic_light_worker import TrafficLightWorker
 from leaderboard.state_estimation.real_test_ego import EgoStateOnlineEvaluator
 import leaderboard.state_estimation.hyperparams as hp
+from leaderboard.state_estimation.ekf_tuning import SensorRecorder
 
 Gravity = 9.81
 min_valid_range_m = 0.5
@@ -53,6 +54,7 @@ class CarlaStateEstimatorEngine:
         self.tracker.start()
         self._last_result = None
         #self.rec = SensorRecorder(self.map.transform_to_geolocation(carla.Location(0,0,0)))
+        self.geo_ref = self.map.transform_to_geolocation(carla.Location(0,0,0))
 
     def get_rest_info(self, state : CalculatedState):
         cr, sr = math.cos(state.ego_state.roll_rad), math.sin(state.ego_state.roll_rad)
@@ -126,11 +128,51 @@ class CarlaStateEstimatorEngine:
             raise ValueError("Sensor data IMU must be provided for computation.")
         
         state = CalculatedState()
+        perp_state = CalculatedState()
         self.speed_limit = vehicle.get_speed_limit()
-        state.ego_state = self.ekf.compute(dt, vehicle, imu_data, gnss_data, lidar_data, step)
+        rec = SensorRecorder(self.geo_ref)
+        wheel = EgoErrorStateEKF3D.get_simulated_speedometer(vehicle)   
+        state.ego_state = self.ekf.compute(dt, vehicle, imu_data, gnss_data, lidar_data, step, wheel_speed= wheel)
+        rec.add(step, dt, imu_data, gnss_data, lidar_data is not None, wheel, vehicle)
+        rec.save(f"route_{step}.npz", self.ekf) 
+        self.ego_evaluator.add_frame(frame_id=str(step),ego_state=self.state.ego_state)
+        if step % 100 == 0: self.ego_evaluator.print_report()
 
+        def _vec(v) -> np.ndarray:
+            return np.array([v.x, v.y, v.z], dtype=float)
+
+        def ego_state_from_vehicle() -> Ego3DState:
+            tf = vehicle.get_transform()
+            R_wb = np.asarray(tf.get_inverse_matrix(), dtype=float)[:3, :3]   # world -> body rotation
+
+            v_w = _vec(vehicle.get_velocity())
+            a_w = _vec(vehicle.get_acceleration())
+            w_b = R_wb @ np.radians(_vec(vehicle.get_angular_velocity()))      # CARLA gives deg/s
+            v_b = R_wb @ v_w
+            a_b = R_wb @ a_w
+
+            roll, pitch, yaw = (math.radians(a) for a in (tf.rotation.roll, tf.rotation.pitch, tf.rotation.yaw))
+            c, s = math.cos(yaw), math.sin(yaw)
+            nan = float("nan")
+
+            return Ego3DState(
+                x=tf.location.x, y=tf.location.y, z=tf.location.z,
+                roll_rad=roll, pitch_rad=pitch, yaw_rad=yaw,
+                roll=tf.rotation.roll, pitch=tf.rotation.pitch, yaw=tf.rotation.yaw,
+                roll_rate=w_b[0], pitch_rate=w_b[1], yaw_rate=w_b[2],
+                vx_body=v_b[0], vy_body=v_b[1], vz_body=v_b[2],
+                ax_body=a_b[0], ay_body=a_b[1], az_body=a_b[2],
+                speed=float(np.linalg.norm(v_w)),
+                vx_world=v_w[0], vy_world=v_w[1], vz_world=v_w[2],
+                long_accel=c * a_w[0] + s * a_w[1],
+                lat_accel=-s * a_w[0] + c * a_w[1],
+                vert_accel=a_w[2],
+                bg_yaw=nan, bg_pitch=nan, bg_roll=nan)
+
+        gt_ego_state = ego_state_from_vehicle()
+        perp_state.ego_state = gt_ego_state
         lidar_np = np.frombuffer(lidar_data.raw_data, dtype=np.float32).reshape(-1, 4).copy()
-        self.tracker.push_frame(state, lidar_np, radar_datas, cameras, step)
+        self.tracker.push_frame(perp_state, lidar_np, radar_datas, cameras, step)
         result = self.tracker.get_latest_result()
 
         if result is not None:
@@ -144,19 +186,14 @@ class CarlaStateEstimatorEngine:
         if frame is not None: self.tlw.push_frame(frame)
         state.light = self.tlw.light_state()  
         self.get_rest_info(state)
-
         self.state = state
-        type(self)._last_state = state
-
-        self.ego_evaluator.add_frame(frame_id=str(step),ego_state=self.state.ego_state)
-        if step % 100 == 0: self.ego_evaluator.print_report()
+        type(self)._last_state = state    
         
         pts_sensor = np.frombuffer(lidar_data.raw_data, dtype=np.float32).reshape(-1, 4).copy()
         ranges = np.linalg.norm(pts_sensor[:, :3], axis=1)
         pts_sensor = pts_sensor[ranges>hp.MIN_VALID_RANGE_M]
-
         self.bbs_evaluator.add_frame(frame_id=str(step), pts_sensor=pts_sensor,
-            track_bbs=[b for b in state.detected_objects if b.moveable], ego_state=self.state.ego_state)
+            track_bbs=[b for b in state.detected_objects if b.moveable], ego_state=gt_ego_state)
         if step % 100 == 0: self.bbs_evaluator.print_report()
 
     @staticmethod

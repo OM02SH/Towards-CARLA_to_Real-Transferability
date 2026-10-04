@@ -15,15 +15,12 @@ STATE_SIZE = 16
 UNSET = object()
 
 
-# --------------------------------------------------------------------------- math helpers
 def wrap(angle: float) -> float:
     return math.atan2(math.sin(angle), math.cos(angle))
-
 
 def skew(v: np.ndarray) -> np.ndarray:
     x, y, z = v
     return np.array([[0.0, -z, y], [z, 0.0, -x], [-y, x, 0.0]], dtype=float)
-
 
 def quat_normalize(q: np.ndarray) -> np.ndarray:
     q = np.asarray(q, dtype=float)
@@ -31,7 +28,6 @@ def quat_normalize(q: np.ndarray) -> np.ndarray:
     if n < 1e-12:
         return np.array([1.0, 0.0, 0.0, 0.0], dtype=float)
     return q / n
-
 
 def quat_mul(q1: np.ndarray, q2: np.ndarray) -> np.ndarray:
     w1, x1, y1, z1 = q1
@@ -43,7 +39,6 @@ def quat_mul(q1: np.ndarray, q2: np.ndarray) -> np.ndarray:
         w1*z2 + x1*y2 - y1*x2 + z1*w2,
     ], dtype=float)
 
-
 def small_angle_quat(dtheta: np.ndarray) -> np.ndarray:
     angle = float(np.linalg.norm(dtheta))
     if angle < 1e-10:
@@ -53,7 +48,6 @@ def small_angle_quat(dtheta: np.ndarray) -> np.ndarray:
     s = math.sin(half)
     return np.array([math.cos(half), axis[0] * s, axis[1] * s, axis[2] * s], dtype=float)
 
-
 def quat_to_R(q: np.ndarray) -> np.ndarray:
     qw, qx, qy, qz = quat_normalize(q)
     return np.array([
@@ -62,12 +56,10 @@ def quat_to_R(q: np.ndarray) -> np.ndarray:
         [2.0*(qx*qz - qy*qw), 2.0*(qy*qz + qx*qw), 1.0 - 2.0*(qx*qx + qy*qy)],
     ], dtype=float)
 
-
 def R_to_quat(R: np.ndarray) -> np.ndarray:
     x, y, z, w = Rotation.from_matrix(R).as_quat()
     q = np.array([w, x, y, z], dtype=float)
     return -q if q[0] < 0 else q
-
 
 def euler_to_quat(roll: float, pitch: float, yaw: float) -> np.ndarray:
     cy, sy = math.cos(yaw * 0.5), math.sin(yaw * 0.5)
@@ -77,7 +69,6 @@ def euler_to_quat(roll: float, pitch: float, yaw: float) -> np.ndarray:
                   cr*sp*cy + sr*cp*sy, cr*cp*sy - sr*sp*cy], dtype=float)
     return quat_normalize(q)
 
-
 def quat_to_euler(q: np.ndarray) -> Tuple[float, float, float]:
     qw, qx, qy, qz = quat_normalize(q)
     roll = math.atan2(2.0*(qw*qx + qy*qz), 1.0 - 2.0*(qx*qx + qy*qy))
@@ -85,12 +76,10 @@ def quat_to_euler(q: np.ndarray) -> Tuple[float, float, float]:
     yaw = math.atan2(2.0*(qw*qz + qx*qy), 1.0 - 2.0*(qy*qy + qz*qz))
     return roll, pitch, yaw
 
-
 def carla_mount_to_flu(pos_carla, rpy_deg_carla) -> Tuple[np.ndarray, np.ndarray]:
     t = np.array([pos_carla[0], -pos_carla[1], pos_carla[2]], dtype=float)
     roll, pitch, yaw = (math.radians(a) for a in rpy_deg_carla)
     return quat_to_R(euler_to_quat(roll, -pitch, -yaw)), t
-
 
 class SpikeFilter:
     def __init__(self, thresh: float):
@@ -108,8 +97,6 @@ class SpikeFilter:
         out[bad] = med[bad]
         return out
 
-
-# --------------------------------------------------------------------------- the filter
 class EgoErrorStateEKF3D:
     """
     3D quaternion error-state EKF for CARLA ego-state estimation.
@@ -120,7 +107,6 @@ class EgoErrorStateEKF3D:
                     lateral non-holonomic constraint, ZUPT (+ gyro-bias) when stationary,
                     gravity direction when slow, LiDAR-SLAM (relative [default] or absolute).
     """
-
     def __init__(self, vehicle, world_map, use_gravity_update: bool = True,
                  slam_worker=None, geo_ref=None, seed: Optional[int] = None):
         trans = vehicle.get_transform()
@@ -135,12 +121,10 @@ class EgoErrorStateEKF3D:
         self.ba = np.zeros(3)
         self.wheel_scale = 0.0
 
-        # ---- sensor mounts (EKF body frame)
         gx, gy, gz = hp.GNSS_POS_CARLA
         self.l_gnss = np.array([gx, -gy, gz], dtype=float)
         self.R_lidar, self.t_lidar = carla_mount_to_flu(hp.LIDAR_POS_CARLA, hp.LIDAR_RPY_DEG_CARLA)
 
-        # ---- SLAM
         T0 = np.eye(4)
         T0[0:3, 0:3] = quat_to_R(q0)
         T0[0:3, 3] = self.p
@@ -149,10 +133,10 @@ class EgoErrorStateEKF3D:
             slam_worker = AsyncSlamWorker(engine, synchronous=hp.SLAM_SYNCHRONOUS)
             slam_worker.start()
         self.slam = slam_worker
-        self.slam_log = []                 # (arrival_step, SlamOutput) -> lets the tuner replay SLAM
-        self._slam_ref = None              # reference for relative fusion
-        self._frame_pose = {}              # frame_id -> 4x4 EKF pose at lidar time
-        self._frame_time = {}              # frame_id -> EKF time
+        self.slam_log = []                 
+        self._slam_ref = None              
+        self._frame_pose = {}              
+        self._frame_time = {}              
 
         self.P = np.diag([
             1.0, 1.0, 1.0,
@@ -164,11 +148,11 @@ class EgoErrorStateEKF3D:
 
         self.t = 0.0
         self.dt = 0.05
-        self.history = deque(maxlen=hp.HISTORY_LEN)   # (t, R_bw, v_world, gyro, dt) per step
+        self.history = deque(maxlen=hp.HISTORY_LEN)   
         self.history_gnss = deque(maxlen=hp.MAX_HISTORY)
         self.nis_history = []
         self.log_innovations = True
-        self._rej = {}                                # consecutive hard-gate rejections per sensor
+        self._rej = {}                                
 
         self.last_gnss_frame: Optional[int] = None
         self.map = world_map
@@ -191,7 +175,6 @@ class EgoErrorStateEKF3D:
         else:
             self._geo_ref = self.map.transform_to_geolocation(carla.Location(0.0, 0.0, 0.0))
 
-    # ------------------------------------------------------------------ basic filter plumbing
     def stabilize_covariance(self) -> None:
         P = 0.5 * (self.P + self.P.T)
         eig_min = float(np.min(np.linalg.eigvalsh(P)))
@@ -276,13 +259,6 @@ class EgoErrorStateEKF3D:
 
     def update_error_state(self, z, z_pred, H, R, residual_fn=None, sensor_name: str = "unknown",
                            gate: str = "soft") -> bool:
-        """
-        Joseph-form EKF update.
-        gate = "none": always accept at nominal R (use when the measurement is trusted, e.g. ZUPT)
-               "soft": inflate R by NIS/chi2 (capped by MAX_R_SCALE) when NIS exceeds the chi2 gate
-               "hard": reject if NIS > chi2 gate. After GATE_MAX_CONSEC_REJECT consecutive rejections
-                       the measurement is force-accepted with inflated R, so the filter can never lock out.
-        """
         z = np.atleast_1d(np.asarray(z, dtype=float))
         innovation = (z - np.atleast_1d(z_pred)) if residual_fn is None else np.atleast_1d(residual_fn(z, z_pred))
         dof = innovation.size
@@ -332,8 +308,6 @@ class EgoErrorStateEKF3D:
         self.stabilize_covariance()
         return True
 
-    # ------------------------------------------------------------------ measurement models
-    # GNSS position of the antenna: p + R * l_gnss      (lever arm)
     def h_gnss(self) -> np.ndarray:
         return self.p + quat_to_R(self.q) @ self.l_gnss
 
@@ -357,7 +331,6 @@ class EgoErrorStateEKF3D:
         H[0, 6:9] = (x * dy_dth - y * dx_dth) / den
         return H
 
-    # wheel: z = [(1+s) * v_x_body, v_y_body]
     def h_wheel(self) -> np.ndarray:
         v_body = quat_to_R(self.q).T @ self.v_world
         return np.array([(1.0 + self.wheel_scale) * v_body[0], v_body[1]], dtype=float)
@@ -406,7 +379,6 @@ class EgoErrorStateEKF3D:
         H[:, 6:9] = np.eye(3)
         return H
 
-    # ------------------------------------------------------------------ updates
     def update_gnss(self, gnss_data) -> None:
         if self.last_gnss_frame is not None and gnss_data.frame == self.last_gnss_frame:
             return
@@ -450,8 +422,6 @@ class EgoErrorStateEKF3D:
                 sensor_name="wheel_longitudinal" if i == 0 else "wheel_lateral", gate="soft")
 
     def detect_stationary(self, wheel_speed: Optional[float], accel_raw: np.ndarray, gyro_raw: np.ndarray) -> bool:
-        """IMU quiet (accel variance, gyro ~ bias) AND wheel speed ~ 0. If the speedometer dropped
-        out, the previous decision is kept as long as the filter speed is tiny."""
         self._imu_win.append(np.concatenate([accel_raw, gyro_raw]))
         if len(self._imu_win) < hp.ZUPT_WINDOW:
             return False
@@ -497,8 +467,6 @@ class EgoErrorStateEKF3D:
                                 sensor_name="gravity", gate="soft")
 
     def update_gnss_velocity(self) -> None:
-        """Legacy pseudo-measurement (OFF by default). Called only on a NEW fix, uses real timestamps.
-        NOTE: it re-uses the same GNSS positions already fused and lags by half the window."""
         if len(self.history_gnss) < hp.MIN_HISTORY or self.stationary:
             return
         h = np.asarray(self.history_gnss, dtype=float)
@@ -507,7 +475,6 @@ class EgoErrorStateEKF3D:
         self.update_error_state(z=v, z_pred=self.h_vel_world(), H=self.H_vel_world(), R=hp.R_GNSS_VEL,
                                 sensor_name="GNSS_vel", gate="soft")
 
-    # ------------------------------------------------------------------ SLAM fusion
     def _ekf_pose(self) -> np.ndarray:
         T = np.eye(4)
         T[0:3, 0:3] = quat_to_R(self.q)
@@ -537,7 +504,6 @@ class EgoErrorStateEKF3D:
             self._update_slam_relative(res)
 
     def _window_stats(self, t0: float, t1: float):
-        """EKF side of a SLAM window: mean world velocity and integrated gyro rotation over (t0, t1]."""
         sel = [h for h in self.history if t0 + 1e-9 < h[0] <= t1 + 1e-9]
         if len(sel) < 2:
             return None
@@ -552,13 +518,6 @@ class EgoErrorStateEKF3D:
         return v_mean, R_rel, tot
 
     def _update_slam_relative(self, res: SlamOutput) -> None:
-        """
-        Drift-free LiDAR fusion. Two SLAM poses >= SLAM_REL_MIN_DT apart give an *average body velocity*
-        and *average angular velocity* over that window. These are compared with the EKF's own average
-        over the very same window (so latency, GNSS jumps and acceleration lag cancel) and the difference
-        corrects the current velocity / gyro bias. Windows never overlap (no double counting), and a
-        loop-closure epoch change simply restarts the window.
-        """
         t1 = self._frame_time[res.frame_id]
         T1e = self._frame_pose[res.frame_id]
         ref = self._slam_ref
@@ -568,8 +527,7 @@ class EgoErrorStateEKF3D:
             self._slam_ref = new_ref
             return
         dt_w = t1 - ref["t"]
-        if dt_w < hp.SLAM_REL_MIN_DT:
-            return                                   # keep the old reference, wait for a longer baseline
+        if dt_w < hp.SLAM_REL_MIN_DT:   return                                   
         stats = self._window_stats(ref["t"], t1)
         if stats is None:
             self._slam_ref = new_ref
@@ -584,7 +542,7 @@ class EgoErrorStateEKF3D:
         w_ekf = Rotation.from_matrix(R_rel_ekf).as_rotvec() / tot
 
         R_now = quat_to_R(self.q)
-        Rm = R_now.T @ R0e                           # frame-at-window-start -> current body frame
+        Rm = R_now.T @ R0e                           
         y_u = Rm @ (u_slam - u_ekf)
         u_now = Rm @ u_ekf
         y_w = w_slam - w_ekf
@@ -608,8 +566,6 @@ class EgoErrorStateEKF3D:
             self._update_slam_tilt_z(res)
 
     def _update_slam_tilt_z(self, res: SlamOutput) -> None:
-        """Loose absolute roll/pitch + height from SLAM (delay-compensated with the EKF's own motion).
-        Yaw and x/y are deliberately NOT used here: they drift in a SLAM frame."""
         T_then = self._frame_pose[res.frame_id]
         T_slam = np.eye(4)
         T_slam[0:3, 0:3] = quat_to_R(res.q)
@@ -635,8 +591,6 @@ class EgoErrorStateEKF3D:
         return 2.0 * dq[1:4]
 
     def _update_slam_absolute(self, res: SlamOutput) -> None:
-        """Absolute SLAM pose, brought to 'now' with the EKF's own motion since the scan was taken:
-        T_now = T_ekf_now * inv(T_ekf_then) * T_slam. Hard-gated, sigma realistic for drift."""
         T_then = self._frame_pose[res.frame_id]
         T_slam = np.eye(4)
         T_slam[0:3, 0:3] = quat_to_R(res.q)
@@ -650,13 +604,10 @@ class EgoErrorStateEKF3D:
         self.update_error_state(z=q_meas, z_pred=self.h_slam_att(), H=self.H_slam_att(), R=hp.R_SLAM_ATT,
                                 residual_fn=self._att_residual, sensor_name="slam_attitude", gate="hard")
 
-    # ------------------------------------------------------------------ simulated speedometer
     @staticmethod
     def get_simulated_speedometer(vehicle, noise_std: float = None, quantization: float = None,
                                   scale_err: float = None, dropout_prob: float = None,
                                   rng: Optional[np.random.Generator] = None) -> Optional[float]:
-        """Wheel-encoder-like speed: multiplicative scale error (not an additive offset), noise,
-        quantisation, dropouts, and exactly 0 at standstill."""
         noise_std = hp.SPEEDO_NOISE_STD if noise_std is None else noise_std
         quantization = hp.SPEEDO_QUANT if quantization is None else quantization
         scale_err = hp.SPEEDO_SCALE_ERR if scale_err is None else scale_err
@@ -676,7 +627,6 @@ class EgoErrorStateEKF3D:
             meas = round(meas / quantization) * quantization
         return float(meas)
 
-    # ------------------------------------------------------------------ output
     def extract_state_from_filter(self) -> Ego3DState:
         roll, pitch, yaw = quat_to_euler(self.q)
         R_bw = quat_to_R(self.q)
@@ -705,7 +655,6 @@ class EgoErrorStateEKF3D:
         self.prev_state = state
         return state
 
-    # ------------------------------------------------------------------ main step
     def compute(self, dt: float, vehicle, imu_data, gnss_data, lidar_data, step,
                 wheel_speed=UNSET, dynamic_boxes=None) -> Ego3DState:
         self.t += dt
@@ -739,7 +688,6 @@ class EgoErrorStateEKF3D:
         self.update_slam(lidar_data, step, dynamic_boxes)
         return self.extract_state_from_filter()
 
-    # ------------------------------------------------------------------ diagnostics
     def nis_summary(self) -> dict:
         """Per-sensor consistency. mean_nis_per_dof should be ~1: >>1 -> R too optimistic (or bias),
         <<1 -> R too conservative. accept_rate shows how often the gate fires."""

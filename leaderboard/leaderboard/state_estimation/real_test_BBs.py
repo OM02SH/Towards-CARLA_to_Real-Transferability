@@ -121,9 +121,11 @@ def evaluate_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List
         f1 = (2 * precision * recall / (precision + recall)
               if np.isfinite(precision) and np.isfinite(recall) and (precision + recall) > 0 else float("nan"))
 
+        recall_visible = n_matched_visible / n_gt_visible if n_gt_visible else float("nan")
         per_threshold[thresh] = {"num_gt_visible": n_gt_visible, "num_matched_unseen": n_matched_unseen,
                                  "num_pred": n_pred, "num_matched": n_matched,
-                                 "recall": recall, "precision": precision, "f1": f1}
+                                 "recall": recall, "recall_visible": recall_visible,
+                                 "precision": precision, "f1": f1}
 
     def _means(d): return {k: (float(np.nanmean(v)) if v else float("nan")) for k, v in d.items()}
 
@@ -304,11 +306,13 @@ def print_results(metrics: dict) -> None:
     print("CLASS-AGNOSTIC BOX PRESENCE / ERROR EVALUATION  (misses only penalised for lidar-visible GT)")
     print("=" * 88)
     print(f"{'threshold (m)':>14}{'GT(Vis)':>10}{'+Unseen':>9}{'num_pred':>10}{'matched':>10}"
-          f"{'recall':>10}{'precision':>10}{'F1':>8}")
+          f"{'recall':>10}{'rec(vis)':>10}{'precision':>10}{'F1':>8}")
     for thresh, m in metrics["per_threshold"].items():
         print(f"{thresh:>14.1f}{m['num_gt_visible']:>10}{m['num_matched_unseen']:>9}{m['num_pred']:>10}"
-              f"{m['num_matched']:>10}{m['recall']:>10.3f}{m['precision']:>10.3f}{m['f1']:>8.3f}")
+              f"{m['num_matched']:>10}{m['recall']:>10.3f}{m['recall_visible']:>10.3f}"
+              f"{m['precision']:>10.3f}{m['f1']:>8.3f}")
     print("  +Unseen = matched GT with too few lidar points: counted as hits, never as misses")
+    print("  recall = matched/(visible+matched unseen) is bonus-adjusted; rec(vis) = visible GT found / visible GT")
     print()
     print(f"TP errors at {metrics['tp_threshold']} m match threshold (matched pairs only):")
     e = metrics["tp_errors"]
@@ -334,6 +338,97 @@ def save_metrics(metrics: dict, path: Path) -> None:
         return obj
     path.write_text(json.dumps(sanitize(metrics), indent=2))
 
+def _fmean(values) -> float:
+    a = np.asarray(values, dtype=float)
+    a = a[np.isfinite(a)]
+    return float(a.mean()) if a.size else float("nan")
+
+def diagnose_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List[Box]],
+                    ego_speed: Dict[str, float], thresh: float = hp.TP_DISTANCE_THRESHOLD,
+                    max_range: float = 50.0, range_edges: Sequence[float] = (0.0, 15.0, 30.0, 50.0),
+                    static_speed: float = 0.2) -> dict:
+    """Where do the errors come from? Range buckets, false-positive types, heading flips, velocity vs ego speed."""
+    inner = list(range_edges[1:-1])
+    nb = len(range_edges) - 1
+
+    def bucket(box: Box) -> int:
+        return int(np.searchsorted(inner, float(np.linalg.norm(box.translation[:2])), side="right"))
+
+    rng = [dict(vis=0, hit_vis=0, unseen=0, hit_unseen=0, pred=0, fp=0) for _ in range(nb)]
+    fp_kind = {"duplicate": 0, "near_miss": 0, "ghost": 0}
+    vel = {"static": [], "moving": []}      # (velocity error, predicted speed, ego speed)
+    ori = {"static": [], "moving": []}      # yaw error, non-pedestrians only
+
+    for fid in sorted(set(gt_frames) | set(pred_frames)):
+        gt = _filter_range(gt_frames.get(fid, []), max_range)
+        pred = _filter_range(pred_frames.get(fid, []), max_range)
+        pairs, _, un_pred = greedy_match(gt, pred, thresh)
+        matched_gt = {gi for gi, _ in pairs}
+        for gi, g in enumerate(gt):
+            r = rng[bucket(g)]
+            if _is_visible(g):
+                r["vis"] += 1
+                r["hit_vis"] += int(gi in matched_gt)
+            else:
+                r["unseen"] += 1
+                r["hit_unseen"] += int(gi in matched_gt)
+        for p in pred:
+            rng[bucket(p)]["pred"] += 1
+        for pi in un_pred:
+            p = pred[pi]
+            rng[bucket(p)]["fp"] += 1
+            d_matched = min((center_distance(gt[gi], p) for gi in matched_gt), default=math.inf)
+            d_any = min((center_distance(g, p) for g in gt), default=math.inf)
+            kind = "duplicate" if d_matched <= 2 * thresh else ("near_miss" if d_any <= 2 * thresh else "ghost")
+            fp_kind[kind] += 1
+        es = ego_speed.get(fid, float("nan"))
+        for gi, pi in pairs:
+            g, p = gt[gi], pred[pi]
+            kind = "static" if float(np.linalg.norm(g.velocity)) < static_speed else "moving"
+            vel[kind].append((velocity_l2(g, p), float(np.linalg.norm(p.velocity)), es))
+            if g.tag != "pedestrian":
+                ori[kind].append(yaw_diff(g, p))
+
+    return {"thresh": thresh, "ranges": [(range_edges[i], range_edges[i + 1]) for i in range(nb)],
+            "range_stats": rng, "fp_kind": fp_kind, "vel": vel, "ori": ori}
+
+def print_diagnostics(d: dict) -> None:
+    nan = float("nan")
+    print(f"\nDIAGNOSTICS @ {d['thresh']} m match threshold")
+    print(f"{'range (m)':>12}{'visGT':>8}{'rec(vis)':>10}{'unseenGT':>10}{'unseen-hit':>12}{'preds':>8}{'precision':>11}")
+    for (lo, hi), r in zip(d["ranges"], d["range_stats"]):
+        vr = r["hit_vis"] / r["vis"] if r["vis"] else nan
+        uh = r["hit_unseen"] / r["unseen"] if r["unseen"] else nan
+        pr = 1.0 - r["fp"] / r["pred"] if r["pred"] else nan
+        print(f"{lo:>5.0f}-{hi:<6.0f}{r['vis']:>8}{vr:>10.3f}{r['unseen']:>10}{uh:>12.3f}{r['pred']:>8}{pr:>11.3f}")
+
+    tot = sum(d["fp_kind"].values())
+    if tot:
+        k = d["fp_kind"]
+        print(f"\nFalse positives: {tot}  |  duplicate/trailing {100*k['duplicate']/tot:.0f}%  "
+              f"(near an already-matched GT)  |  near-miss {100*k['near_miss']/tot:.0f}%  "
+              f"(<= 2x thresh from an unmatched GT)  |  ghost {100*k['ghost']/tot:.0f}%  (no GT nearby)")
+
+    print("\nOrientation (non-pedestrian matches)       n   AOE raw  AOE flip-folded  flipped>120deg")
+    for kind in ("static", "moving"):
+        a = np.asarray(d["ori"][kind], dtype=float)
+        if a.size:
+            print(f"  GT {kind:<8}{'':>26}{a.size:>5}{a.mean():>10.3f}{np.minimum(a, math.pi - a).mean():>17.3f}"
+                  f"{100*np.mean(a > 2*math.pi/3):>15.1f}%")
+
+    print("\nVelocity (matched pairs)                    n    AVE   mean pred speed")
+    for kind in ("static", "moving"):
+        a = np.asarray(d["vel"][kind], dtype=float).reshape(-1, 3)
+        if not a.size:
+            continue
+        print(f"  GT {kind:<8}{'':>28}{len(a):>5}{_fmean(a[:, 0]):>7.2f}{_fmean(a[:, 1]):>12.2f}")
+        if kind == "static":
+            for lo, hi in ((0.0, 0.5), (0.5, 3.0), (3.0, math.inf)):
+                m = (a[:, 2] >= lo) & (a[:, 2] < hi)
+                if m.any():
+                    print(f"      ego speed {lo:>3.1f}-{hi:<4.1f} m/s{'':>14}{int(m.sum()):>5}{_fmean(a[m, 0]):>7.2f}"
+                          f"{_fmean(a[m, 1]):>12.2f}")
+
 class OnlineEvaluator:
     def __init__(self, world: carla.World, ego_actor_id: int, thresholds: Sequence[float] = hp.DIST_THRESHOLDS,
                  tp_threshold: float = hp.TP_DISTANCE_THRESHOLD, max_range: float = 50, warmup_frames: int = 40):
@@ -342,6 +437,7 @@ class OnlineEvaluator:
         self.max_range = max_range
         self.warmup_frames = warmup_frames      
         self._seen = 0
+        self._ego_speed: Dict[str, float] = {}
         self._gt_frames: Dict[str, List[Box]] = {}
         self._pred_frames: Dict[str, List[Box]] = {}
         self.world = world
@@ -355,6 +451,7 @@ class OnlineEvaluator:
         self.lidar_actor = self._find_lidar()
 
     def _find_lidar(self):
+        # the sensors may be spawned after this evaluator is built, so this is retried in add_frame
         for actor in self.world.get_actors().filter('sensor.lidar.ray_cast'):
             if actor.parent and actor.parent.id == self.ego_actor_id:
                 return actor
@@ -364,6 +461,8 @@ class OnlineEvaluator:
         self._seen += 1
         if self._seen <= self.warmup_frames:
             return
+        self._ego_speed[frame_id] = float(getattr(ego_state, "speed", float("nan")))
+
         if self.lidar_actor is None:
             self.lidar_actor = self._find_lidar()
             if self.lidar_actor is None:
@@ -406,6 +505,7 @@ class OnlineEvaluator:
     def reset(self) -> None:
         self._gt_frames.clear()
         self._pred_frames.clear()
+        self._ego_speed.clear()
         self._seen = 0
 
     @property
@@ -415,8 +515,12 @@ class OnlineEvaluator:
     def evaluate(self) -> dict:
         return evaluate_frames(self._gt_frames, self._pred_frames, self.thresholds, self.tp_threshold, self.max_range)
 
+    def diagnose(self) -> dict:
+        return diagnose_frames(self._gt_frames, self._pred_frames, self._ego_speed, self.tp_threshold, self.max_range)
+
     def print_report(self) -> None:
         print_results(self.evaluate())
+        print_diagnostics(self.diagnose())
 
     def save_metrics_json(self, filename: "str | Path") -> None:
         save_metrics(self.evaluate(), Path(filename))
