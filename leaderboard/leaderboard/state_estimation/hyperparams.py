@@ -25,7 +25,7 @@ SIGMA_GRAVITY_DIRECTION = 0.1
 SIGMA_GNSS_VEL = 1.5
  
 SIGMA_GYRO = math.radians(0.5)
-SIGMA_ACCEL = 0.7
+SIGMA_ACCEL = 0.35
 SIGMA_GYRO_BIAS_RW = math.radians(0.01)
 SIGMA_ACCEL_BIAS_RW = 0.01
 SIGMA_WHEEL_SCALE_RW = 1e-3      
@@ -41,7 +41,7 @@ GYRO_CLIP_RAD = math.radians(100.0)
 ACCEL_SPIKE_THRESH = 8.0         
 GYRO_SPIKE_THRESH = 1.0          
  
-USE_ZUPT = True
+USE_ZUPT = False
 ZUPT_WINDOW = 10                 
 ZUPT_ACCEL_VAR = 0.05            
 ZUPT_GYRO_MAX = 0.03             

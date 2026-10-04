@@ -690,6 +690,7 @@ class EgoErrorStateEKF3D:
     def nis_summary(self) -> dict:
         """Per-sensor consistency. mean_nis_per_dof should be ~1: >>1 -> R too optimistic (or bias),
         <<1 -> R too conservative. accept_rate shows how often the gate fires."""
+        print("printing nis")
         out = {}
         for r in self.nis_history:
             s = out.setdefault(r["sensor"], {"n": 0, "acc": 0, "sum": 0.0, "fin": 0, "dof": r["dof"]})

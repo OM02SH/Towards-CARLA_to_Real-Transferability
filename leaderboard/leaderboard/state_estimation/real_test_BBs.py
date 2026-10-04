@@ -186,7 +186,7 @@ class CarlaGroundTruthExtractor:
         Ground truth built once from the map, then read directly every frame
     """
     def __init__(self, world: carla.World, ego_actor_id: int,
-                 static_max_range: float = 50.0, actor_max_range: float = 50.0,
+                 static_max_range: float = 80.0, actor_max_range: float = 80.0,
                  min_points_for_visibility: int = 5, visibility_margin: float = 0.2):
         self.world = world
         self.ego_actor_id = ego_actor_id
