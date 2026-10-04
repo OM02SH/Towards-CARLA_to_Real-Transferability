@@ -16,17 +16,16 @@ LIDAR_RPY_DEG_CARLA = (0.0, 0.0, 0.0)
 G = 9.81
 EARTH_RADIUS_EQUA = 6378137.0
  
-SIGMA_GNSS_XY = 1.0
-SIGMA_GNSS_Z = 0.75
+SIGMA_GNSS_XY = 0.6
+SIGMA_GNSS_Z = 0.5
 SIGMA_COMPASS = math.radians(5.0)
 SIGMA_WHEEL_LONG = 0.08          
-SIGMA_WHEEL_LAT = 0.10           
-SIGMA_GRAVITY_DIRECTION = 0.1
+SIGMA_WHEEL_LAT = 0.10   
+SIGMA_GRAVITY_DIRECTION = 0.05
 SIGMA_GNSS_VEL = 1.5
  
-# ---- process noise
 SIGMA_GYRO = math.radians(0.5)
-SIGMA_ACCEL = 0.35
+SIGMA_ACCEL = 0.25
 SIGMA_GYRO_BIAS_RW = math.radians(0.01)
 SIGMA_ACCEL_BIAS_RW = 0.01
 SIGMA_WHEEL_SCALE_RW = 1e-3      
@@ -56,7 +55,7 @@ SPEEDO_QUANT = 0.03
 SPEEDO_SCALE_ERR = 0.01          
 SPEEDO_DROPOUT = 0.01
  
-USE_GNSS_VELOCITY = False
+USE_GNSS_VELOCITY = True
 MAX_HISTORY = 20
 MIN_HISTORY = 5
  
@@ -200,6 +199,33 @@ extrinsics = np.array([
     # cam_05
     [[-1.0, 0.0, 0.0, -0.8], [0.0, -1.0, 0.0, -0.3], [0.0, 0.0, 1.0, -0.18], [0.0, 0.0, 0.0, 1.0]]
 ], dtype=np.float32)
+
+#################### UKF ###################
+
+POSITION_STD = 0.5
+YAW_STD = math.radians(5.0)
+ACCEL_STD = 2.0
+YAW_RATE_STD = math.radians(10.0)
+L_STD = 0.125
+W_STD = 0.125
+Z_STD = 0.25
+H_STD = 0.25
+PROCESS_JERK_STD = 5
+PROCESS_JERK_LAT_SCALE = 0.8
+PROCESS_YAW_ACCEL_STD = math.radians(20.0)
+PROCESS_L_STD = 0.05
+PROCESS_W_STD = 0.05
+PROCESS_Z_STD = 0.05
+PROCESS_H_STD = 0.05
+LIDAR_YAW_STD = math.radians(5.0)
+LIDAR_L_STD = 0.25
+LIDAR_W_STD = 0.25
+LIDAR_Z_STD = 0.15
+LIDAR_H_STD = 0.15
+RADAR_VELOCITY_STD = 0.25
+YAW_ALIGN_MIN_SPEED = 2.0
+RADAR_GATE_PROB = 0.95
+DET_VELOCITY_STD = 1.0
 
 ############## Traffic Light ###############
 STOP_CLASS_ID = 0

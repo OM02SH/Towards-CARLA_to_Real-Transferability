@@ -5,7 +5,7 @@ from scipy.stats import chi2
 from scipy.optimize import linear_sum_assignment
 from scipy.linalg import block_diag
 from filterpy.kalman import UnscentedKalmanFilter, MerweScaledSigmaPoints
-
+import leaderboard.state_estimation.hyperparams as hp
 from leaderboard.state_estimation.sensor_dataclasses import bev_Det, trackedbb
 
 def normalize_angle(angle: float) -> float:
@@ -39,53 +39,9 @@ class ObjectUKF:
         11    height (vertical extent of box)
     """
 
-    def __init__(
-        self,
-        dt: float,
-        x0: float,
-        y0: float,
-        yaw0: float,
-        vx0: float,
-        vy0: float,
-        l0: float,
-        w0: float,
-        z0: float,
-        h0: float,
-        position_std: float = 0.5,
-        yaw_std: float = math.radians(10.0),
-        accel_std: float = 4.0,
-        yaw_rate_std: float = math.radians(20.0),
-        l_std: float = 0.125,
-        w_std: float = 0.125,
-        z_std: float = 0.25,
-        h_std: float = 0.25,
-        process_jerk_std: float = 5,
-        process_jerk_lat_scale: float = 1.0,
-        process_yaw_accel_std: float = math.radians(20.0),
-        process_l_std: float = 0.05,
-        process_w_std: float = 0.05,
-        process_z_std: float = 0.05,
-        process_h_std: float = 0.05,
-        lidar_yaw_std: float = math.radians(5.0),
-        lidar_l_std: float = 0.25,
-        lidar_w_std: float = 0.25,
-        lidar_z_std: float = 0.15,
-        lidar_h_std: float = 0.15,
-        radar_velocity_std: float = 0.25,
-        yaw_align_min_speed: float = 2.0,
-        radar_gate_prob: float = 0.95,
-        det_velocity_std: float = 1.0
-    ):
-        self.process_yaw_accel_std = process_yaw_accel_std
-        self.process_jerk_std = process_jerk_std
-        self.process_jerk_lat_scale = process_jerk_lat_scale
-        self.process_l_std = process_l_std
-        self.process_w_std = process_w_std
-        self.process_z_std = process_z_std
-        self.process_h_std = process_h_std
-        self.yaw_align_min_speed = yaw_align_min_speed
+    def __init__(self, dt: float, x0: float, y0: float, yaw0: float,
+                  vx0: float, vy0: float, l0: float, w0: float, z0: float, h0: float):
         self.dt = dt
-        self.radar_gate_threshold = chi2.ppf(radar_gate_prob, df=1)
         self._predicted_sigmas_valid = False
 
         sigma_points = MerweScaledSigmaPoints(n=DIM_X, alpha=0.5, beta=2.0, kappa=0.0, sqrt_method=robust_sqrt)
@@ -93,7 +49,7 @@ class ObjectUKF:
                     points=sigma_points, x_mean_fn=self.state_mean, residual_x=self.state_residual)
 
         vx_init, vy_init = (vx0, vy0) 
-        if math.hypot(vx_init, vy_init) >= max(yaw_align_min_speed, 3.0 * det_velocity_std):
+        if math.hypot(vx_init, vy_init) >= max(hp.YAW_ALIGN_MIN_SPEED, 3.0 * hp.DET_VELOCITY_STD):
             course0 = math.atan2(vy_init, vx_init)
             if abs(normalize_angle(yaw0 - course0)) > math.pi / 2:
                 yaw0 = yaw0 + math.pi
@@ -109,12 +65,13 @@ class ObjectUKF:
         self.ukf.x[10] = z0
         self.ukf.x[11] = h0
 
-        self.ukf.P = np.diag([position_std**2, position_std**2, det_velocity_std**2, det_velocity_std**2,
-            accel_std**2, accel_std**2, yaw_std**2, yaw_rate_std**2, l_std**2, w_std**2, z_std**2, h_std**2])
+        self.ukf.P = np.diag([hp.POSITION_STD**2, hp.POSITION_STD**2, hp.DET_VELOCITY_STD**2, hp.DET_VELOCITY_STD**2,
+            hp.ACCEL_STD**2, hp.ACCEL_STD**2, hp.YAW_STD**2, hp.YAW_RATE_STD**2, hp.L_STD**2, hp.W_STD**2, hp.Z_STD**2, hp.H_STD**2])
         self.ukf.Q = self.make_process_noise(dt)
-        self.lidarR = np.diag([position_std**2, position_std**2, lidar_yaw_std**2, lidar_l_std**2, lidar_w_std**2, lidar_z_std**2, lidar_h_std**2])
-        self.detVelR = np.diag([det_velocity_std**2, det_velocity_std**2])
-        self.radarR = np.array([[radar_velocity_std**2]])
+        self.lidarR = np.diag([hp.POSITION_STD**2, hp.POSITION_STD**2, hp.LIDAR_YAW_STD**2,
+                                hp.LIDAR_L_STD**2, hp.LIDAR_W_STD**2, hp.LIDAR_Z_STD**2, hp.LIDAR_H_STD**2])
+        self.detVelR = np.diag([hp.DET_VELOCITY_STD**2, hp.DET_VELOCITY_STD**2])
+        self.radarR = np.array([[hp.RADAR_VELOCITY_STD**2]])
         self.ukf.R = self.lidarR
 
     def stabilize_covariance(self) -> None:
@@ -183,8 +140,8 @@ class ObjectUKF:
         yaw = float(self.ukf.x[YAW_IDX])
         c, s = math.cos(yaw), math.sin(yaw)
         Rz = np.array([[c, -s], [s, c]])
-        sig_long = self.process_jerk_std**2
-        sig_lat = (self.process_jerk_std * self.process_jerk_lat_scale)**2
+        sig_long = hp.PROCESS_JERK_STD**2
+        sig_lat = (hp.PROCESS_JERK_STD * hp.PROCESS_JERK_LAT_SCALE)**2
         jerk_cov = Rz @ np.diag([sig_long, sig_lat]) @ Rz.T
         qva = np.array([
             [dt**5 / 20, dt**4 / 8, dt**3 / 6],
@@ -195,12 +152,12 @@ class ObjectUKF:
             for b in range(2):
                 q[np.ix_(idx[a], idx[b])] += jerk_cov[a, b] * qva
 
-        qya = self.process_yaw_accel_std**2
+        qya = hp.PROCESS_YAW_ACCEL_STD**2
         q[np.ix_((6, 7), (6, 7))] += qya * np.array([[dt**3 / 3, dt**2 / 2], [dt**2 / 2, dt]])
-        q[8, 8] = self.process_l_std**2 * dt
-        q[9, 9] = self.process_w_std**2 * dt
-        q[10, 10] = self.process_z_std**2 * dt
-        q[11, 11] = self.process_h_std**2 * dt
+        q[8, 8] = hp.PROCESS_L_STD**2 * dt
+        q[9, 9] = hp.PROCESS_W_STD**2 * dt
+        q[10, 10] = hp.PROCESS_Z_STD**2 * dt
+        q[11, 11] = hp.PROCESS_H_STD**2 * dt
         return 0.5 * (q + q.T)
 
     @staticmethod
@@ -230,7 +187,7 @@ class ObjectUKF:
     def _resolve_heading(self, measured_yaw: float) -> float:
         x = self.ukf.x
         measured = normalize_angle(measured_yaw)
-        if math.hypot(x[2], x[3]) >= self.yaw_align_min_speed:
+        if math.hypot(x[2], x[3]) >= hp.YAW_ALIGN_MIN_SPEED:
             course = math.atan2(x[3], x[2])
             if abs(normalize_angle(x[YAW_IDX] - course)) > math.pi / 2:
                 x[YAW_IDX] = normalize_angle(x[YAW_IDX] + math.pi)
@@ -294,7 +251,7 @@ class ObjectUKF:
         zp = float(np.sum(sigmas_h[:, 0] * Wm))
         Pz = float(self.radarR[0, 0] + np.sum(Wc * (sigmas_h[:, 0] - zp) ** 2))
         nis = (v_r_abs - zp) ** 2 / max(Pz, 1e-9)
-        return nis <= self.radar_gate_threshold
+        return nis <= chi2.ppf(hp.RADAR_GATE_PROB, df=1)
 
     def _gate_radar(self, radar_meas_list: list[tuple]) -> list[tuple]:
         valid = []
@@ -390,7 +347,7 @@ class ObjectUKF:
 
     @property
     def sideslip(self) -> float:
-        if self.speed < self.yaw_align_min_speed * 0.5:
+        if self.speed < hp.YAW_ALIGN_MIN_SPEED * 0.5:
             return 0.0
         return float(normalize_angle(math.atan2(self.vy, self.vx) - self.yaw))
 
@@ -479,7 +436,7 @@ class UKFTrackBB2D:
             vx, vy, ax, ay = float(x[2]), float(x[3]), float(x[4]), float(x[5])
             speed = raw_speed
             acceleration = (vx * ax + vy * ay) / speed
-        slip = 0.0 if raw_speed < 0.5 * self.ukf.yaw_align_min_speed else \
+        slip = 0.0 if raw_speed < 0.5 * hp.YAW_ALIGN_MIN_SPEED else \
             math.degrees(normalize_angle(math.atan2(x[3], x[2]) - yaw))
         return trackedbb(px=float(x[0]), py=float(x[1]), moveable=True,
                          vx=vx, vy=vy, speed=speed, acceleration=acceleration, ax=ax, ay=ay,
