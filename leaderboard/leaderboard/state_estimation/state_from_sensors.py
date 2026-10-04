@@ -126,7 +126,7 @@ class CarlaStateEstimatorEngine:
         frame = sensors_data["yolo_camera"]
         if (imu_data == None):
             raise ValueError("Sensor data IMU must be provided for computation.")
-        
+        lidar_np = np.frombuffer(lidar_data.raw_data, dtype=np.float32).reshape(-1, 4).copy()
         state = CalculatedState()
         perp_state = CalculatedState()
         self.speed_limit = vehicle.get_speed_limit()
@@ -171,7 +171,6 @@ class CarlaStateEstimatorEngine:
 
         gt_ego_state = ego_state_from_vehicle()
         perp_state.ego_state = gt_ego_state
-        lidar_np = np.frombuffer(lidar_data.raw_data, dtype=np.float32).reshape(-1, 4).copy()
         self.tracker.push_frame(perp_state, lidar_np, radar_datas, cameras, step)
         result = self.tracker.get_latest_result()
 
