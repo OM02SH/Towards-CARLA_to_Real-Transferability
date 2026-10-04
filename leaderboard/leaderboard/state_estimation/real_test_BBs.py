@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -181,7 +182,8 @@ def global_boxes_to_ego(boxes: Sequence[Box], ego_state: Ego3DState) -> List[Box
             tag=box.tag,
             frame_id=box.frame_id,
         )
-        setattr(new_box, 'score', getattr(box, 'score', float('nan')))
+        for extra in ('score', 'det_speed', 'n_radar'):
+            setattr(new_box, extra, getattr(box, extra, float('nan')))
         converted.append(new_box)
     return converted
 
@@ -374,7 +376,7 @@ def diagnose_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List
     fp_kind = {"duplicate": 0, "near_miss": 0, "ghost": 0}
     ghost_anatomy: Dict[Tuple[str, str], int] = {}
     ghost_rows: List[tuple] = []      # (frame, x_ego, y_ego, x_world, y_world, l, w, h, speed, score, range)
-    # matched pairs: (vel_err, pred_speed, ego_speed, gt_speed, angle_deg, is_pedestrian, pvx, pvy, gvx, gvy)
+    # matched pairs: (vel_err, pred_speed, ego_speed, gt_speed, angle_deg, is_pedestrian, pvx, pvy, gvx, gvy, det_speed, n_radar)
     vel = {"static": [], "moving": []}
     ori = {"static": [], "moving": []}      # yaw error, non-pedestrians only
 
@@ -436,7 +438,8 @@ def diagnose_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List
                 c = float(np.dot(g.velocity, p.velocity) / (gs * ps))
                 ang = math.degrees(math.acos(max(-1.0, min(1.0, c))))
             vel[kind].append((velocity_l2(g, p), ps, es, gs, ang, 1.0 if g.tag == "pedestrian" else 0.0,
-                              float(p.velocity[0]), float(p.velocity[1]), float(g.velocity[0]), float(g.velocity[1])))
+                              float(p.velocity[0]), float(p.velocity[1]), float(g.velocity[0]), float(g.velocity[1]),
+                              float(getattr(p, "det_speed", float("nan"))), float(getattr(p, "n_radar", float("nan")))))
             if g.tag != "pedestrian":
                 ori[kind].append(yaw_diff(g, p))
 
@@ -505,16 +508,16 @@ def print_diagnostics(d: dict) -> None:
                   f"{100*np.mean(a > 2*math.pi/3):>15.1f}%")
 
     print("\nVelocity (matched pairs)")
-    a = np.asarray(d["vel"]["static"], dtype=float).reshape(-1, 10)
+    a = np.asarray(d["vel"]["static"], dtype=float).reshape(-1, 12)
     if a.size:
         print(f"  GT static: n={len(a)}  AVE={_fmean(a[:, 0]):.2f}  mean pred speed={_fmean(a[:, 1]):.2f}")
         for lo, hi in ((0.0, 0.5), (0.5, 3.0), (3.0, math.inf)):
             m = (a[:, 2] >= lo) & (a[:, 2] < hi)
             if m.any():
                 print(f"      ego speed {lo:>3.1f}-{hi:<4.1f} m/s: n={int(m.sum()):>6}  AVE={_fmean(a[m, 0]):.2f}")
-    a = np.asarray(d["vel"]["moving"], dtype=float).reshape(-1, 10)
+    a = np.asarray(d["vel"]["moving"], dtype=float).reshape(-1, 12)
     if a.size:
-        print(f"  GT moving:  {'group':<22}{'n':>7}{'AVE':>7}{'GT spd':>8}{'pred spd':>10}{'med angle err':>15}{'reversed>120':>14}")
+        print(f"  GT moving:  {'group':<22}{'n':>7}{'AVE':>7}{'GT spd':>8}{'track spd':>10}{'raw det spd':>12}{'radar pts':>10}{'med angle err':>15}{'reversed>120':>14}")
         veh = a[:, 5] == 0
         groups = (("pedestrians", a[:, 5] == 1),
                   ("vehicles 0.2-2 m/s", veh & (a[:, 3] < 2)),
@@ -526,7 +529,8 @@ def print_diagnostics(d: dict) -> None:
                 ang = sub[:, 4][np.isfinite(sub[:, 4])]
                 rev = 100 * float(np.mean(ang > 120)) if ang.size else nan
                 print(f"              {name:<22}{len(sub):>7}{_fmean(sub[:, 0]):>7.2f}{_fmean(sub[:, 3]):>8.2f}"
-                      f"{_fmean(sub[:, 1]):>10.2f}{_fmedian(ang):>14.1f}d{rev:>13.1f}%")
+                      f"{_fmean(sub[:, 1]):>10.2f}{_fmean(sub[:, 10]):>12.2f}{_fmean(sub[:, 11]):>10.1f}"
+                      f"{_fmedian(ang):>14.1f}d{rev:>13.1f}%")
         v = a[(a[:, 5] == 0) & np.isfinite(a[:, 6]) & np.isfinite(a[:, 7])]
         if len(v):
             pvx, pvy, gvx, gvy, es_ = v[:, 6], v[:, 7], v[:, 8], v[:, 9], v[:, 2]
@@ -539,15 +543,19 @@ def print_diagnostics(d: dict) -> None:
 class OnlineEvaluator:
     def __init__(self, world: carla.World, ego_actor_id: int, thresholds: Sequence[float] = hp.DIST_THRESHOLDS,
                  tp_threshold: float = hp.TP_DISTANCE_THRESHOLD, max_range: float = 50, warmup_frames: int = 40,
-                 ghost_csv: Optional[str] = "bbs_ghosts.csv"):
+                 ghost_csv: Optional[str] = "bbs_ghosts.csv", stationary_stride: int = 1):
         self.thresholds = list(thresholds)
         self.tp_threshold = tp_threshold
         self.max_range = max_range
         self.warmup_frames = warmup_frames      # EKF convergence / radar start / track confirmation
         self._seen = 0
+        self.stationary_stride = stationary_stride   # >1: keep only every Nth frame while the ego is stopped
+        self._stopped = 0
         self._ego_speed: Dict[str, float] = {}
         self._ego_pose: Dict[str, Tuple[float, float, float]] = {}
-        self.ghost_csv = ghost_csv
+        # env var wins, so the path can be set from `docker run -e BBS_GHOST_CSV=/some/mounted/dir/bbs_ghosts.csv`
+        self.ghost_csv = os.environ.get("BBS_GHOST_CSV") or ghost_csv
+        self._ghost_path_announced = False
         self._gt_frames: Dict[str, List[Box]] = {}
         self._pred_frames: Dict[str, List[Box]] = {}
         self.world = world
@@ -571,7 +579,12 @@ class OnlineEvaluator:
         self._seen += 1
         if self._seen <= self.warmup_frames:
             return
-        self._ego_speed[frame_id] = float(getattr(ego_state, "speed", float("nan")))
+        spd = float(getattr(ego_state, "speed", float("nan")))
+        if self.stationary_stride > 1 and np.isfinite(spd) and spd < 0.1:
+            self._stopped += 1
+            if self._stopped % self.stationary_stride:
+                return
+        self._ego_speed[frame_id] = spd
 
         if self.lidar_actor is None:
             self.lidar_actor = self._find_lidar()
@@ -597,7 +610,8 @@ class OnlineEvaluator:
         pred_boxes : list[Box] = []
         for pb in track_bbs:
             box = Box.from_trackedbb(pb, frame_id=frame_id)
-            setattr(box, 'score', float(getattr(pb, 'score', float('nan'))))
+            for extra in ('score', 'det_speed', 'n_radar'):
+                setattr(box, extra, float(getattr(pb, extra, float('nan'))))
 
             if tracker_is_right_handed:
                 box.translation[1] = -box.translation[1]
@@ -620,6 +634,7 @@ class OnlineEvaluator:
         self._pred_frames.clear()
         self._ego_speed.clear()
         self._ego_pose.clear()
+        self._stopped = 0
         self._seen = 0
 
     @property
@@ -644,7 +659,15 @@ class OnlineEvaluator:
         d = self.diagnose()
         print_diagnostics(d)
         if self.ghost_csv:
-            self.save_ghosts_csv(d["ghost_rows"], self.ghost_csv)
+            try:
+                os.makedirs(os.path.dirname(os.path.abspath(self.ghost_csv)), exist_ok=True)
+                self.save_ghosts_csv(d["ghost_rows"], self.ghost_csv)
+                if not self._ghost_path_announced:
+                    print(f"[evaluator] ghost CSV is written to {os.path.abspath(self.ghost_csv)} "
+                          f"(must be inside a mounted volume to survive the container)")
+                    self._ghost_path_announced = True
+            except Exception as exc:
+                print(f"[evaluator] could not write ghost CSV to {self.ghost_csv}: {exc}")
 
     def save_metrics_json(self, filename: "str | Path") -> None:
         save_metrics(self.evaluate(), Path(filename))

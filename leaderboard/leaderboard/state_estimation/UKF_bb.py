@@ -249,9 +249,8 @@ class ObjectUKF:
         sigmas_h = np.array([self.hx_radar(sigmas[i], u_world) for i in range(sigmas.shape[0])])
         Wm, Wc = self.ukf.Wm, self.ukf.Wc
         zp = float(np.sum(sigmas_h[:, 0] * Wm))
-        Pz = float(self.radarR[0, 0] + np.sum(Wc * (sigmas_h[:, 0] - zp) ** 2))
-        nis = (v_r_abs - zp) ** 2 / max(Pz, 1e-9)
-        return nis <= chi2.ppf(hp.RADAR_GATE_PROB, df=1)
+        Pz = float(self.radarR[0, 0] + np.sum(Wc * (sigmas_h[:, 0] - zp) ** 2))+ hp.RADAR_GATE_FLOOR_STD ** 2
+        return (v_r_abs - zp) ** 2 / max(Pz, 1e-9) <= chi2.ppf(hp.RADAR_GATE_PROB, df=1)
 
     def _gate_radar(self, radar_meas_list: list[tuple]) -> list[tuple]:
         valid = []
@@ -440,10 +439,11 @@ class UKFTrackBB2D:
             acceleration = (vx * ax + vy * ay) / speed
         slip = 0.0 if raw_speed < 0.5 * hp.YAW_ALIGN_MIN_SPEED else \
             math.degrees(normalize_angle(math.atan2(x[3], x[2]) - yaw))
+        last = self.bbs[-1]
         return trackedbb(px=float(x[0]), py=float(x[1]), moveable=True,
                          vx=vx, vy=vy, speed=speed, acceleration=acceleration, ax=ax, ay=ay,
-                         yaw=yaw, yaw_rate=float(x[7]), len=float(x[8]), wid=float(x[9]),
-                         z=float(x[10]), height=float(x[11]), score=self.score,
+                         yaw=yaw, yaw_rate=float(x[7]), len=float(x[8]), wid=float(x[9]), n_radar = len(last.radar_points),
+                         z=float(x[10]), height=float(x[11]), score=self.score, det_speed = math.hypot(last.vx, last.vy),
                          pos_history=self.pos_history, slip_angle_deg=slip)
 
     def get_all_data(self) -> trackedbb:
@@ -470,7 +470,7 @@ class UKFBoundingBoxTracker:
         self.max_tentative_misses = max_tentative_misses
         self.max_coast_s = max_coast_s
         self._last_step: Optional[float] = None       # step of the last detector frame
-        self.spawn_score = 0.3
+        self.spawn_score = 0.0
         self.max_publish_misses = 3
 
     @property

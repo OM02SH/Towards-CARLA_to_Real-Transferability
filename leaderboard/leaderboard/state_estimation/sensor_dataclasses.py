@@ -87,6 +87,8 @@ class trackedbb:
     height: float = 1.5
     pos_history: list[tuple[float, float, float]] = field(default_factory=list)
     score:float = 0.0
+    det_speed:float = 0.0
+    n_radar:float = 0.0
 
 @dataclass
 class bev_Det:
