@@ -79,7 +79,8 @@ def evaluate_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List
     all_frames = sorted(set(gt_frames) | set(pred_frames))
     per_threshold = {}
     tp_errors_by_tag: Dict[str, Dict[str, List[float]]] = {}
-    overall_tp_errors: Dict[str, List[float]] = {"trans_err": [], "scale_err": [], "orient_err": [], "vel_err": []}
+    overall_tp_errors: Dict[str, List[float]] = {"trans_err": [], "scale_err": [], "orient_err": [],
+                                                 "orient_fold_err": [], "vel_err": []}
 
     for thresh in thresholds:
         n_gt_visible = n_pred = n_matched = n_matched_visible = n_matched_unseen = 0
@@ -106,6 +107,7 @@ def evaluate_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List
                     overall_tp_errors["trans_err"].append(center_distance(g, p))
                     overall_tp_errors["scale_err"].append(1.0 - scale_iou(g, p))
                     overall_tp_errors["orient_err"].append(yaw_diff(g, p))
+                    overall_tp_errors["orient_fold_err"].append(min(yaw_diff(g, p), math.pi - yaw_diff(g, p)))
                     overall_tp_errors["vel_err"].append(velocity_l2(g, p))
                     if by_tag and g.tag:
                         d = tp_errors_by_tag.setdefault(g.tag, {"trans_err": [], "scale_err": [],
@@ -171,22 +173,25 @@ def global_boxes_to_ego(boxes: Sequence[Box], ego_state: Ego3DState) -> List[Box
             cos_yaw * velocity[0] + sin_yaw * velocity[1],
             -sin_yaw * velocity[0] + cos_yaw * velocity[1],
         ])
-        converted.append(Box(
+        new_box = Box(
             translation=world_to_local(ego_transform, box.translation),
             size=box.size.copy(),
             yaw=wrap_angle_rad(box.yaw - ego_yaw),
             velocity=velocity_ego,
             tag=box.tag,
             frame_id=box.frame_id,
-        ))
+        )
+        setattr(new_box, 'score', getattr(box, 'score', float('nan')))
+        converted.append(new_box)
     return converted
+
 
 class CarlaGroundTruthExtractor:
     """
         Ground truth built once from the map, then read directly every frame
     """
     def __init__(self, world: carla.World, ego_actor_id: int,
-                 static_max_range: float = 80.0, actor_max_range: float = 80.0,
+                 static_max_range: float = 50.0, actor_max_range: float = 50.0,
                  min_points_for_visibility: int = 5, visibility_margin: float = 0.2):
         self.world = world
         self.ego_actor_id = ego_actor_id
@@ -214,6 +219,7 @@ class CarlaGroundTruthExtractor:
 
     def _get_points_in_box(self, box: Box, lidar_points_ego: Optional[np.ndarray]) -> int:
         if lidar_points_ego is None:
+            # no lidar available: do not fake invisibility, treat every box as visible
             return self.min_points_for_visibility
         if lidar_points_ego.size == 0:
             return 0
@@ -267,6 +273,8 @@ class CarlaGroundTruthExtractor:
             box = box_from_actor(actor, tag=_tag_from_type_id(actor.type_id))
             box.frame_id = frame_id
 
+            # occluded / sparse boxes are tagged, not deleted: they are never penalised as misses,
+            # but they earn credit when the tracker finds them anyway
             is_visible = self._get_points_in_box(box, lidar_points_ego) >= self.min_points_for_visibility
             setattr(box, 'visible', is_visible)
             boxes.append(box)
@@ -318,7 +326,7 @@ def print_results(metrics: dict) -> None:
     e = metrics["tp_errors"]
     print(f"  ATE (m)     : {e['trans_err']:.3f}")
     print(f"  ASE (1-IoU) : {e['scale_err']:.3f}")
-    print(f"  AOE (rad)   : {e['orient_err']:.3f}")
+    print(f"  AOE (rad)   : {e['orient_err']:.3f}   (180-degree flip-folded: {e['orient_fold_err']:.3f})")
     print(f"  AVE (m/s)   : {e['vel_err']:.3f}")
     if metrics["tp_errors_by_tag"]:
         print("\n  by GT tag:")
@@ -343,20 +351,31 @@ def _fmean(values) -> float:
     a = a[np.isfinite(a)]
     return float(a.mean()) if a.size else float("nan")
 
+def _fmedian(values) -> float:
+    a = np.asarray(values, dtype=float)
+    a = a[np.isfinite(a)]
+    return float(np.median(a)) if a.size else float("nan")
+
 def diagnose_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List[Box]],
                     ego_speed: Dict[str, float], thresh: float = hp.TP_DISTANCE_THRESHOLD,
                     max_range: float = 50.0, range_edges: Sequence[float] = (0.0, 15.0, 30.0, 50.0),
-                    static_speed: float = 0.2) -> dict:
-    """Where do the errors come from? Range buckets, false-positive types, heading flips, velocity vs ego speed."""
+                    static_speed: float = 0.2, score_edges: Sequence[float] = (0.2, 0.3, 0.4, 0.5),
+                    ego_pose: Optional[Dict[str, Tuple[float, float, float]]] = None) -> dict:
+    """Where do the errors come from? Range, false-positive anatomy, precision vs score, heading flips, velocity."""
     inner = list(range_edges[1:-1])
     nb = len(range_edges) - 1
+    score_edges = list(score_edges)
 
     def bucket(box: Box) -> int:
         return int(np.searchsorted(inner, float(np.linalg.norm(box.translation[:2])), side="right"))
 
     rng = [dict(vis=0, hit_vis=0, unseen=0, hit_unseen=0, pred=0, fp=0) for _ in range(nb)]
+    sc = [dict(n=0, fp=0, ghost=0) for _ in range(len(score_edges) + 1)]
     fp_kind = {"duplicate": 0, "near_miss": 0, "ghost": 0}
-    vel = {"static": [], "moving": []}      # (velocity error, predicted speed, ego speed)
+    ghost_anatomy: Dict[Tuple[str, str], int] = {}
+    ghost_rows: List[tuple] = []      # (frame, x_ego, y_ego, x_world, y_world, l, w, h, speed, score, range)
+    # matched pairs: (vel_err, pred_speed, ego_speed, gt_speed, angle_deg, is_pedestrian, pvx, pvy, gvx, gvy)
+    vel = {"static": [], "moving": []}
     ori = {"static": [], "moving": []}      # yaw error, non-pedestrians only
 
     for fid in sorted(set(gt_frames) | set(pred_frames)):
@@ -364,6 +383,7 @@ def diagnose_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List
         pred = _filter_range(pred_frames.get(fid, []), max_range)
         pairs, _, un_pred = greedy_match(gt, pred, thresh)
         matched_gt = {gi for gi, _ in pairs}
+        unmatched_pred = set(un_pred)
         for gi, g in enumerate(gt):
             r = rng[bucket(g)]
             if _is_visible(g):
@@ -372,25 +392,57 @@ def diagnose_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List
             else:
                 r["unseen"] += 1
                 r["hit_unseen"] += int(gi in matched_gt)
-        for p in pred:
-            rng[bucket(p)]["pred"] += 1
-        for pi in un_pred:
-            p = pred[pi]
-            rng[bucket(p)]["fp"] += 1
+        for pi, p in enumerate(pred):
+            b = bucket(p)
+            rng[b]["pred"] += 1
+            s_ = float(getattr(p, "score", float("nan")))
+            sb = int(np.searchsorted(score_edges, s_, side="right")) if np.isfinite(s_) else None
+            if sb is not None:
+                sc[sb]["n"] += 1
+            if pi not in unmatched_pred:
+                continue
+            rng[b]["fp"] += 1
             d_matched = min((center_distance(gt[gi], p) for gi in matched_gt), default=math.inf)
             d_any = min((center_distance(g, p) for g in gt), default=math.inf)
             kind = "duplicate" if d_matched <= 2 * thresh else ("near_miss" if d_any <= 2 * thresh else "ghost")
             fp_kind[kind] += 1
+            if sb is not None:
+                sc[sb]["fp"] += 1
+                sc[sb]["ghost"] += int(kind == "ghost")
+            if kind == "ghost":
+                size_cls = "ped-sized (<1.2 m)" if max(p.size[0], p.size[1]) < 1.2 else "vehicle-sized"
+                motion = "moving" if float(np.linalg.norm(p.velocity)) >= 0.5 else "static"
+                ghost_anatomy[(size_cls, motion)] = ghost_anatomy.get((size_cls, motion), 0) + 1
+                pose = ego_pose.get(fid) if ego_pose else None
+                if pose is not None:
+                    ex0, ey0, eyaw = pose
+                    cy_, sy_ = math.cos(eyaw), math.sin(eyaw)
+                    wx = ex0 + cy_ * float(p.translation[0]) - sy_ * float(p.translation[1])
+                    wy = ey0 + sy_ * float(p.translation[0]) + cy_ * float(p.translation[1])
+                else:
+                    wx = wy = float("nan")
+                ghost_rows.append((fid, float(p.translation[0]), float(p.translation[1]), wx, wy,
+                                   float(p.size[0]), float(p.size[1]), float(p.size[2]),
+                                   float(np.linalg.norm(p.velocity)), s_,
+                                   float(np.linalg.norm(p.translation[:2]))))
         es = ego_speed.get(fid, float("nan"))
         for gi, pi in pairs:
             g, p = gt[gi], pred[pi]
-            kind = "static" if float(np.linalg.norm(g.velocity)) < static_speed else "moving"
-            vel[kind].append((velocity_l2(g, p), float(np.linalg.norm(p.velocity)), es))
+            gs = float(np.linalg.norm(g.velocity))
+            ps = float(np.linalg.norm(p.velocity))
+            kind = "static" if gs < static_speed else "moving"
+            ang = float("nan")
+            if gs > 0.5 and ps > 0.5 and np.all(np.isfinite(p.velocity)):
+                c = float(np.dot(g.velocity, p.velocity) / (gs * ps))
+                ang = math.degrees(math.acos(max(-1.0, min(1.0, c))))
+            vel[kind].append((velocity_l2(g, p), ps, es, gs, ang, 1.0 if g.tag == "pedestrian" else 0.0,
+                              float(p.velocity[0]), float(p.velocity[1]), float(g.velocity[0]), float(g.velocity[1])))
             if g.tag != "pedestrian":
                 ori[kind].append(yaw_diff(g, p))
 
     return {"thresh": thresh, "ranges": [(range_edges[i], range_edges[i + 1]) for i in range(nb)],
-            "range_stats": rng, "fp_kind": fp_kind, "vel": vel, "ori": ori}
+            "range_stats": rng, "score_edges": score_edges, "score_stats": sc, "fp_kind": fp_kind,
+            "ghost_anatomy": ghost_anatomy, "ghost_rows": ghost_rows, "vel": vel, "ori": ori}
 
 def print_diagnostics(d: dict) -> None:
     nan = float("nan")
@@ -408,6 +460,42 @@ def print_diagnostics(d: dict) -> None:
         print(f"\nFalse positives: {tot}  |  duplicate/trailing {100*k['duplicate']/tot:.0f}%  "
               f"(near an already-matched GT)  |  near-miss {100*k['near_miss']/tot:.0f}%  "
               f"(<= 2x thresh from an unmatched GT)  |  ghost {100*k['ghost']/tot:.0f}%  (no GT nearby)")
+    if d["ghost_anatomy"]:
+        print("  ghosts by type: " + "  |  ".join(f"{sz}, {mo}: {n}" for (sz, mo), n in sorted(d["ghost_anatomy"].items())))
+
+    rows = d["ghost_rows"]
+    if rows:
+        ranges = np.array([r[10] for r in rows])
+        edges_r = [0.0, 3.0, 6.0, 10.0, 15.0, 30.0, 50.0001]
+        hist, _ = np.histogram(ranges, bins=edges_r)
+        print("\nGhost range histogram (ego frame): " + "  ".join(
+            f"{edges_r[i]:.0f}-{min(edges_r[i+1], 50):.0f}m: {int(hist[i])} ({100*hist[i]/len(rows):.0f}%)"
+            for i in range(len(hist))))
+        print(f"  ghosts within 3 m of the ego origin (ego body / sensor artefacts): {int(hist[0])}")
+        fin = [r for r in rows if np.isfinite(r[3])]
+        if fin:
+            cells: Dict[Tuple[int, int], List[tuple]] = {}
+            for r in fin:
+                cells.setdefault((int(round(r[3] / 2.0)), int(round(r[4] / 2.0))), []).append(r)
+            ranked = sorted(cells.items(), key=lambda kv: -len(kv[1]))
+            top10 = sum(len(v) for _, v in ranked[:10])
+            print(f"  ghosts in the 10 busiest 2 m WORLD cells: {100*top10/len(fin):.0f}% of all ghosts "
+                  f"(high = fixed scene objects missing from GT; low = scattered hallucinations)")
+            print(f"  {'world x':>9}{'world y':>9}{'count':>7}{'frames':>8}{'mean l x w':>14}{'mean speed':>12}")
+            for (cx, cy), v in ranked[:6]:
+                print(f"  {cx*2.0:>9.1f}{cy*2.0:>9.1f}{len(v):>7}{len({r[0] for r in v}):>8}"
+                      f"{np.mean([r[5] for r in v]):>8.1f}x{np.mean([r[6] for r in v]):<4.1f}{np.mean([r[8] for r in v]):>12.2f}")
+
+    edges = d["score_edges"]
+    if any(s["n"] for s in d["score_stats"]):
+        labels = [f"<{edges[0]:.2f}"] + [f"{edges[i]:.2f}-{edges[i+1]:.2f}" for i in range(len(edges) - 1)] + [f">={edges[-1]:.2f}"]
+        print(f"\nPrecision by detector score of the track's last matched detection")
+        print(f"{'score':>12}{'preds':>9}{'precision':>11}{'ghost share':>13}")
+        for lab, s in zip(labels, d["score_stats"]):
+            if s["n"]:
+                print(f"{lab:>12}{s['n']:>9}{1 - s['fp']/s['n']:>11.3f}{s['ghost']/s['n']:>13.3f}")
+    else:
+        print("\n(no detector scores on the tracker output: trackedbb rejected the extra 'score' attribute)")
 
     print("\nOrientation (non-pedestrian matches)       n   AOE raw  AOE flip-folded  flipped>120deg")
     for kind in ("static", "moving"):
@@ -416,28 +504,50 @@ def print_diagnostics(d: dict) -> None:
             print(f"  GT {kind:<8}{'':>26}{a.size:>5}{a.mean():>10.3f}{np.minimum(a, math.pi - a).mean():>17.3f}"
                   f"{100*np.mean(a > 2*math.pi/3):>15.1f}%")
 
-    print("\nVelocity (matched pairs)                    n    AVE   mean pred speed")
-    for kind in ("static", "moving"):
-        a = np.asarray(d["vel"][kind], dtype=float).reshape(-1, 3)
-        if not a.size:
-            continue
-        print(f"  GT {kind:<8}{'':>28}{len(a):>5}{_fmean(a[:, 0]):>7.2f}{_fmean(a[:, 1]):>12.2f}")
-        if kind == "static":
-            for lo, hi in ((0.0, 0.5), (0.5, 3.0), (3.0, math.inf)):
-                m = (a[:, 2] >= lo) & (a[:, 2] < hi)
-                if m.any():
-                    print(f"      ego speed {lo:>3.1f}-{hi:<4.1f} m/s{'':>14}{int(m.sum()):>5}{_fmean(a[m, 0]):>7.2f}"
-                          f"{_fmean(a[m, 1]):>12.2f}")
+    print("\nVelocity (matched pairs)")
+    a = np.asarray(d["vel"]["static"], dtype=float).reshape(-1, 10)
+    if a.size:
+        print(f"  GT static: n={len(a)}  AVE={_fmean(a[:, 0]):.2f}  mean pred speed={_fmean(a[:, 1]):.2f}")
+        for lo, hi in ((0.0, 0.5), (0.5, 3.0), (3.0, math.inf)):
+            m = (a[:, 2] >= lo) & (a[:, 2] < hi)
+            if m.any():
+                print(f"      ego speed {lo:>3.1f}-{hi:<4.1f} m/s: n={int(m.sum()):>6}  AVE={_fmean(a[m, 0]):.2f}")
+    a = np.asarray(d["vel"]["moving"], dtype=float).reshape(-1, 10)
+    if a.size:
+        print(f"  GT moving:  {'group':<22}{'n':>7}{'AVE':>7}{'GT spd':>8}{'pred spd':>10}{'med angle err':>15}{'reversed>120':>14}")
+        veh = a[:, 5] == 0
+        groups = (("pedestrians", a[:, 5] == 1),
+                  ("vehicles 0.2-2 m/s", veh & (a[:, 3] < 2)),
+                  ("vehicles 2-6 m/s", veh & (a[:, 3] >= 2) & (a[:, 3] < 6)),
+                  ("vehicles >6 m/s", veh & (a[:, 3] >= 6)))
+        for name, m in groups:
+            if m.any():
+                sub = a[m]
+                ang = sub[:, 4][np.isfinite(sub[:, 4])]
+                rev = 100 * float(np.mean(ang > 120)) if ang.size else nan
+                print(f"              {name:<22}{len(sub):>7}{_fmean(sub[:, 0]):>7.2f}{_fmean(sub[:, 3]):>8.2f}"
+                      f"{_fmean(sub[:, 1]):>10.2f}{_fmedian(ang):>14.1f}d{rev:>13.1f}%")
+        v = a[(a[:, 5] == 0) & np.isfinite(a[:, 6]) & np.isfinite(a[:, 7])]
+        if len(v):
+            pvx, pvy, gvx, gvy, es_ = v[:, 6], v[:, 7], v[:, 8], v[:, 9], v[:, 2]
+            variants = (("as is", pvx, pvy), ("vy negated", pvx, -pvy), ("vx negated", -pvx, pvy),
+                        ("+ ego speed on x", pvx + es_, pvy), ("- ego speed on x", pvx - es_, pvy),
+                        ("predict zero", 0 * pvx, 0 * pvy))
+            print("  Velocity convention test, moving vehicles: mean |v_variant - v_GT| in m/s (a variant far below 'as is' = convention bug)")
+            print("    " + "   ".join(f"{n}: {_fmean(np.hypot(x - gvx, y - gvy)):.2f}" for n, x, y in variants))
 
 class OnlineEvaluator:
     def __init__(self, world: carla.World, ego_actor_id: int, thresholds: Sequence[float] = hp.DIST_THRESHOLDS,
-                 tp_threshold: float = hp.TP_DISTANCE_THRESHOLD, max_range: float = 50, warmup_frames: int = 40):
+                 tp_threshold: float = hp.TP_DISTANCE_THRESHOLD, max_range: float = 50, warmup_frames: int = 40,
+                 ghost_csv: Optional[str] = "bbs_ghosts.csv"):
         self.thresholds = list(thresholds)
         self.tp_threshold = tp_threshold
         self.max_range = max_range
-        self.warmup_frames = warmup_frames      
+        self.warmup_frames = warmup_frames      # EKF convergence / radar start / track confirmation
         self._seen = 0
         self._ego_speed: Dict[str, float] = {}
+        self._ego_pose: Dict[str, Tuple[float, float, float]] = {}
+        self.ghost_csv = ghost_csv
         self._gt_frames: Dict[str, List[Box]] = {}
         self._pred_frames: Dict[str, List[Box]] = {}
         self.world = world
@@ -469,6 +579,8 @@ class OnlineEvaluator:
                 print("WARNING: ego lidar actor not found, treating all GT as visible")
 
         gt_ego_transform = self.ego_actor.get_transform()
+        self._ego_pose[frame_id] = (float(gt_ego_transform.location.x), float(gt_ego_transform.location.y),
+                                    math.radians(float(gt_ego_transform.rotation.yaw)))
         if self.lidar_actor:
             lidar_transform = self.lidar_actor.get_transform()
             world_to_ego = np.asarray(gt_ego_transform.get_inverse_matrix(), dtype=float)
@@ -485,6 +597,7 @@ class OnlineEvaluator:
         pred_boxes : list[Box] = []
         for pb in track_bbs:
             box = Box.from_trackedbb(pb, frame_id=frame_id)
+            setattr(box, 'score', float(getattr(pb, 'score', float('nan'))))
 
             if tracker_is_right_handed:
                 box.translation[1] = -box.translation[1]
@@ -506,6 +619,7 @@ class OnlineEvaluator:
         self._gt_frames.clear()
         self._pred_frames.clear()
         self._ego_speed.clear()
+        self._ego_pose.clear()
         self._seen = 0
 
     @property
@@ -516,11 +630,21 @@ class OnlineEvaluator:
         return evaluate_frames(self._gt_frames, self._pred_frames, self.thresholds, self.tp_threshold, self.max_range)
 
     def diagnose(self) -> dict:
-        return diagnose_frames(self._gt_frames, self._pred_frames, self._ego_speed, self.tp_threshold, self.max_range)
+        return diagnose_frames(self._gt_frames, self._pred_frames, self._ego_speed, self.tp_threshold,
+                               self.max_range, ego_pose=self._ego_pose)
+
+    def save_ghosts_csv(self, rows: list, path: "str | Path") -> None:
+        with open(path, "w") as f:
+            f.write("frame,x_ego,y_ego,x_world,y_world,length,width,height,speed,score,range\n")
+            for r in rows:
+                f.write(",".join(str(v) for v in r) + "\n")
 
     def print_report(self) -> None:
         print_results(self.evaluate())
-        print_diagnostics(self.diagnose())
+        d = self.diagnose()
+        print_diagnostics(d)
+        if self.ghost_csv:
+            self.save_ghosts_csv(d["ghost_rows"], self.ghost_csv)
 
     def save_metrics_json(self, filename: "str | Path") -> None:
         save_metrics(self.evaluate(), Path(filename))

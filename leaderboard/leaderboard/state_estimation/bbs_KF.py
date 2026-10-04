@@ -418,6 +418,18 @@ def process_radar(state: CalculatedState, radar_arr: np.ndarray, sensor_transfor
     p_world = (T_sensor_to_world @ p_sensor.T).T[:, :3]
     u_world = u_sensor @ R_sensor_to_world.T
     v_r_abs = v_r + u_world @ v_ego_world
+    DEBUG_RADAR_SIGN = False       # module level
+    _RADAR_STATS = [0, 0, 0]       # module level
+
+    if DEBUG_RADAR_SIGN and np.linalg.norm(v_ego_world) > 3.0:
+        a = v_r + u_world @ v_ego_world          # your current formula
+        b = -v_r + u_world @ v_ego_world         # 'towards the sensor' formula
+        _RADAR_STATS[0] += int(np.sum(np.abs(a) < 0.5))
+        _RADAR_STATS[1] += int(np.sum(np.abs(b) < 0.5))
+        _RADAR_STATS[2] += len(v_r)
+        if _RADAR_STATS[2] > 20000:
+            print(f"radar sign test: current {_RADAR_STATS[0]/_RADAR_STATS[2]:.2f}  flipped {_RADAR_STATS[1]/_RADAR_STATS[2]:.2f}")
+            _RADAR_STATS[:] = [0, 0, 0]
     return np.column_stack([p_world, v_r_abs, u_world]).astype(np.float32)
 
 def detect_from_sensors(state: CalculatedState, lidar_stream, radar_streams, cameras, step,
