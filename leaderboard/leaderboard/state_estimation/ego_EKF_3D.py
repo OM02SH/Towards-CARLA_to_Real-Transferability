@@ -12,13 +12,7 @@ from leaderboard.state_estimation.sensor_dataclasses import Ego3DState
 from leaderboard.state_estimation.carla_lida_loc import (CarlaPoseGraphSLAM, AsyncSlamWorker, SlamOutput)
 
 STATE_SIZE = 16
-CLONE_SIZE = 6          # stochastic clone of (position error, attitude error) used by relative SLAM fusion
 UNSET = object()
-
-
-def _hp(name: str, default):
-    """Read an optional hyperparameter; new knobs fall back to a default so old hyperparams.py still works."""
-    return getattr(hp, name, default)
 
 
 def wrap(angle: float) -> float:
@@ -108,16 +102,10 @@ class EgoErrorStateEKF3D:
     3D quaternion error-state EKF for CARLA ego-state estimation.
     Nominal state : p_w, v_w, q_bw, gyro_bias, accel_bias, wheel_scale
     Error state   : dp, dv, dtheta, dbg, dba, dscale   (16 = 3+3+3+3+3+1)  [dx = truth - estimate]
-                    (+6 transient states, a stochastic clone of dp/dtheta, while relative SLAM fusion is active)
-    IMU           : nominal-state propagation, with a per-axis cross-check against wheel-speed/planar-motion
-                    kinematics (outlier clamp + process-noise inflation)
-    Updates       : GNSS position (with lever arm), compass yaw,
-                    wheel speed (scale-factor model) + planar-motion constraints (vy ~ 0, vz ~ 0),
-                    ZUPT (+ gyro-bias) when stationary, gravity direction when slow,
-                    LiDAR-SLAM: "relative_clone" [default, relative pose via stochastic cloning],
-                                "relative" [legacy window-mean velocity], or "absolute".
-    Start-up      : stationary alignment (tilt from gravity, gyro bias) before the filter is `initialized`.
-                    Skip frames with `ekf.initialized == False` in evaluation.
+    IMU           : nominal-state propagation
+    Updates       : GNSS position (with lever arm), compass yaw, wheel speed (scale-factor model) +
+                    lateral non-holonomic constraint, ZUPT (+ gyro-bias) when stationary,
+                    gravity direction when slow, LiDAR-SLAM (relative [default] or absolute).
     """
     def __init__(self, vehicle, world_map, use_gravity_update: bool = True,
                  slam_worker=None, geo_ref=None, seed: Optional[int] = None):
@@ -145,35 +133,26 @@ class EgoErrorStateEKF3D:
             slam_worker = AsyncSlamWorker(engine, synchronous=hp.SLAM_SYNCHRONOUS)
             slam_worker.start()
         self.slam = slam_worker
-        self.slam_log = []
-        self._slam_ref = None              # legacy relative-velocity reference
-        self._slam_ref_c = None            # relative_clone reference (SLAM pose at clone time)
-        self._clone = None                 # nominal (p, q) at clone time
-        self._frame_pose = {}
-        self._frame_time = {}
-
-        # bias handling: when a bias is not estimated its prior is made (almost) deterministic
-        self.est_bg = bool(_hp("ESTIMATE_GYRO_BIAS", True))
-        self.est_ba = bool(_hp("ESTIMATE_ACCEL_BIAS", True))
-        sig_bg0 = _hp("SIGMA_GYRO_BIAS_P0", math.radians(2.0)) if self.est_bg else 1e-5
-        sig_ba0 = _hp("SIGMA_ACCEL_BIAS_P0", 0.4) if self.est_ba else 1e-5
+        self.slam_log = []                 
+        self._slam_ref = None              
+        self._frame_pose = {}              
+        self._frame_time = {}              
 
         self.P = np.diag([
             1.0, 1.0, 1.0,
             1.0, 1.0, 1.0,
             math.radians(5.0)**2, math.radians(5.0)**2, math.radians(10.0)**2,
-            sig_bg0**2, sig_bg0**2, sig_bg0**2,
-            sig_ba0**2, sig_ba0**2, sig_ba0**2, hp.SIGMA_WHEEL_SCALE_P0**2,
+            math.radians(2.0)**2, math.radians(2.0)**2, math.radians(2.0)**2,
+            0.4**2, 0.4**2, 0.4**2, hp.SIGMA_WHEEL_SCALE_P0**2,
         ]).astype(float)
-        self.n = STATE_SIZE                # current covariance dimension (16, or 22 with an active clone)
 
         self.t = 0.0
         self.dt = 0.05
-        self.history = deque(maxlen=hp.HISTORY_LEN)
+        self.history = deque(maxlen=hp.HISTORY_LEN)   
         self.history_gnss = deque(maxlen=hp.MAX_HISTORY)
         self.nis_history = []
         self.log_innovations = True
-        self._rej = {}
+        self._rej = {}                                
 
         self.last_gnss_frame: Optional[int] = None
         self.map = world_map
@@ -188,28 +167,19 @@ class EgoErrorStateEKF3D:
         self._imu_win = deque(maxlen=hp.ZUPT_WINDOW)
         self.stationary = False
         self.last_wheel_speed = None
-        self._ss_prev = None
         self._a_world_lpf = None
-        self._a_kin_lpf = None
-        self._vb_prev = None
         self._rng = np.random.default_rng(seed)
-
-        # start-up phase
-        self.initialized = not _hp("USE_STARTUP_ALIGNMENT", True)
-        self._n_frames = 0
-        self._init_buf = []
 
         if geo_ref is not None:
             self._geo_ref = geo_ref
         else:
             self._geo_ref = self.map.transform_to_geolocation(carla.Location(0.0, 0.0, 0.0))
 
-    # ------------------------------------------------------------------ covariance utilities
     def stabilize_covariance(self) -> None:
         P = 0.5 * (self.P + self.P.T)
         eig_min = float(np.min(np.linalg.eigvalsh(P)))
         if eig_min < 1e-10:
-            P += np.eye(self.n) * (1e-10 - eig_min)
+            P += np.eye(STATE_SIZE) * (1e-10 - eig_min)
         self.P = 0.5 * (P + P.T)
 
     def _discretize_process_noise(self, Fc, Gc, Qc_diag, dt):
@@ -227,13 +197,6 @@ class EgoErrorStateEKF3D:
             Qd += np.eye(STATE_SIZE) * max(0.0, -float(np.min(eigvals)) + 1e-14)
         return Phi, Qd
 
-    def _set_cov_block(self, idx, var: float) -> None:
-        """Re-initialise some error states with an independent variance (used after direct state resets)."""
-        for i in idx:
-            self.P[i, :] = 0.0
-            self.P[:, i] = 0.0
-            self.P[i, i] = var
-
     def nominal_copy(self) -> dict:
         return {"p": self.p.copy(), "v": self.v_world.copy(), "q": self.q.copy(), "bg": self.bg.copy(),
                 "ba": self.ba.copy(), "wheel_scale": float(self.wheel_scale)}
@@ -246,10 +209,6 @@ class EgoErrorStateEKF3D:
         self.bg += dx[9:12]
         self.ba += dx[12:15]
         self.wheel_scale += float(dx[15])
-        if self._clone is not None and dx.size >= STATE_SIZE + CLONE_SIZE:
-            self._clone["p"] += dx[STATE_SIZE:STATE_SIZE + 3]
-            self._clone["q"] = quat_normalize(
-                quat_mul(self._clone["q"], small_angle_quat(dx[STATE_SIZE + 3:STATE_SIZE + 6])))
 
     @staticmethod
     def carla_imu_to_body(imu_data) -> Tuple[np.ndarray, np.ndarray]:
@@ -258,54 +217,15 @@ class EgoErrorStateEKF3D:
                                dtype=float)
         return np.diag([1.0, -1.0, 1.0]) @ accel_carla, np.diag([-1.0, 1.0, -1.0]) @ gyro_carla
 
-    # ------------------------------------------------------------------ IMU cross-check
-    def _sanitize_imu_accel(self, dt: float, wheel_speed: Optional[float]) -> float:
-        """
-        Structural IMU outlier handling. The kinematics of a ground vehicle tell us what the accelerometer
-        should read (per body axis), so gross disagreement is an IMU artefact, not motion:
-          long.  : IMU-implied dv_x/dt must match the differentiated wheel speed
-          lat.   : dv_y/dt ~ 0   (non-holonomic constraint)
-          vert.  : dv_z/dt ~ 0   (planar motion)
-        The IMU-implied dv/dt is clamped to within a limit of that expectation (Huber-style), and the process
-        noise of this step is inflated by the returned factor, so the filter also *knows* it was hit.
-        Mutates self.a_body in place.
-        """
-        if not _hp("IMU_XCHECK", True):
-            return 1.0
-        R = quat_to_R(self.q)
-        v_b = R.T @ self.v_world
-        a_kin = self.a_body + R.T @ np.array([0.0, 0.0, -hp.G])          # kinematic accel, body frame
-        dvdt = a_kin - np.cross(self.gyro, v_b)                         # IMU-implied d(v_body)/dt
-        lim = (_hp("IMU_XCHECK_LONG", 5.0), _hp("IMU_XCHECK_LAT", 4.0), _hp("IMU_XCHECK_VERT", 3.0))
-        infl = 1.0
-
-        resid = [None, float(dvdt[1]), float(dvdt[2])]
-        if wheel_speed is not None and self._ss_prev is not None and dt > 0.0:
-            a_wheel = (wheel_speed - self._ss_prev) / dt / (1.0 + self.wheel_scale)
-            resid[0] = float(dvdt[0] - a_wheel)
-        for i in range(3):
-            r = resid[i]
-            if r is None:
-                continue
-            ex = r - float(np.clip(r, -lim[i], lim[i]))
-            if ex != 0.0:
-                self.a_body[i] -= ex
-                infl = max(infl, 1.0 + (abs(r) / lim[i]) ** 2)
-        return min(infl, _hp("IMU_Q_INFLATE_MAX", 25.0))
-
-    # ------------------------------------------------------------------ propagation
-    def propagate(self, dt: float, hold: bool = False, accel_noise_scale: float = 1.0) -> None:
-        """hold=True: vehicle known to be at rest during start-up -> do not integrate, only grow covariance."""
+    def propagate(self, dt: float) -> None:
         if dt <= 0.0:
             return
         R = quat_to_R(self.q)
-        if hold:
-            self.v_world[:] = 0.0
-        else:
-            a_world = R @ self.a_body + np.array([0.0, 0.0, -hp.G], dtype=float)
-            self.p += self.v_world * dt + 0.5 * a_world * dt * dt
-            self.v_world += a_world * dt
-            self.q = quat_normalize(quat_mul(self.q, small_angle_quat(self.gyro * dt)))
+        a_world = R @ self.a_body + np.array([0.0, 0.0, -hp.G], dtype=float)
+
+        self.p += self.v_world * dt + 0.5 * a_world * dt * dt
+        self.v_world += a_world * dt
+        self.q = quat_normalize(quat_mul(self.q, small_angle_quat(self.gyro * dt)))
 
         Fc = np.zeros((STATE_SIZE, STATE_SIZE))
         Fc[0:3, 3:6] = np.eye(3)
@@ -321,61 +241,44 @@ class EgoErrorStateEKF3D:
         Gc[12:15, 9:12] = np.eye(3)
         Gc[15, 12] = 1.0
 
-        sg_rw = hp.SIGMA_GYRO_BIAS_RW if self.est_bg else 0.0
-        sa_rw = hp.SIGMA_ACCEL_BIAS_RW if self.est_ba else 0.0
-        sa = hp.SIGMA_ACCEL * math.sqrt(max(1.0, accel_noise_scale))
         Qc_diag = np.array([
-            sa**2, sa**2, sa**2,
+            hp.SIGMA_ACCEL**2, hp.SIGMA_ACCEL**2, hp.SIGMA_ACCEL**2,
             hp.SIGMA_GYRO**2, hp.SIGMA_GYRO**2, hp.SIGMA_GYRO**2,
-            sg_rw**2, sg_rw**2, sg_rw**2,
-            sa_rw**2, sa_rw**2, sa_rw**2,
+            hp.SIGMA_GYRO_BIAS_RW**2, hp.SIGMA_GYRO_BIAS_RW**2, hp.SIGMA_GYRO_BIAS_RW**2,
+            hp.SIGMA_ACCEL_BIAS_RW**2, hp.SIGMA_ACCEL_BIAS_RW**2, hp.SIGMA_ACCEL_BIAS_RW**2,
             hp.SIGMA_WHEEL_SCALE_RW**2,
         ], dtype=float)
         F, Qd = self._discretize_process_noise(Fc, Gc, Qc_diag, dt)
-
-        S = STATE_SIZE
-        Pxx = F @ self.P[:S, :S] @ F.T + Qd
-        if self.n > S:                                     # clone states do not move, only decorrelate
-            Pxc = F @ self.P[:S, S:]
-            self.P = np.block([[Pxx, Pxc], [Pxc.T, self.P[S:, S:]]])
-        else:
-            self.P = Pxx
+        self.P = F @ self.P @ F.T + Qd
         self.stabilize_covariance()
 
-    def _apply_error_reset(self, dx: np.ndarray) -> None:
-        G_reset = np.eye(self.n)
-        G_reset[6:9, 6:9] = np.eye(3) - 0.5 * skew(dx[6:9])
-        if self.n > STATE_SIZE:
-            c = STATE_SIZE + 3
-            G_reset[c:c + 3, c:c + 3] = np.eye(3) - 0.5 * skew(dx[c:c + 3])
+    def _apply_error_reset(self, dtheta: np.ndarray) -> None:
+        G_reset = np.eye(STATE_SIZE)
+        G_reset[6:9, 6:9] = np.eye(3) - 0.5 * skew(dtheta)
         self.P = G_reset @ self.P @ G_reset.T
 
     def update_error_state(self, z, z_pred, H, R, residual_fn=None, sensor_name: str = "unknown",
-                           gate: str = "soft", max_scale: Optional[float] = None) -> bool:
+                           gate: str = "soft") -> bool:
         z = np.atleast_1d(np.asarray(z, dtype=float))
         innovation = (z - np.atleast_1d(z_pred)) if residual_fn is None else np.atleast_1d(residual_fn(z, z_pred))
         dof = innovation.size
-        H = np.atleast_2d(H)
-        if H.shape[1] < self.n:                           # callers may pass 16-wide H while a clone is active
-            H = np.hstack([H, np.zeros((H.shape[0], self.n - H.shape[1]))])
         S = H @ self.P @ H.T + R
         try:
             nis = float(innovation @ np.linalg.solve(S, innovation))
         except np.linalg.LinAlgError:
             nis = float("inf")
         thr = hp.CHI2_999.get(dof, 3.0 * dof + 7.0)
-        cap = hp.MAX_R_SCALE if max_scale is None else max_scale
 
         accepted, scale = True, 1.0
         if not np.isfinite(nis):
             accepted = False
         elif gate == "soft":
-            scale = 1.0 if nis <= thr else min(nis / thr, cap)
+            scale = 1.0 if nis <= thr else min(nis / thr, hp.MAX_R_SCALE)
         elif gate == "hard":
             if nis > thr:
                 self._rej[sensor_name] = self._rej.get(sensor_name, 0) + 1
                 if self._rej[sensor_name] > hp.GATE_MAX_CONSEC_REJECT:
-                    scale = min(nis / thr, cap)
+                    scale = min(nis / thr, hp.MAX_R_SCALE)
                     self._rej[sensor_name] = 0
                 else:
                     accepted = False
@@ -395,16 +298,16 @@ class EgoErrorStateEKF3D:
         K = np.linalg.solve(S, PHt.T).T
         dx = K @ innovation
 
-        I_KH = np.eye(self.n) - K @ H
+        I_KH = np.eye(STATE_SIZE) - K @ H
         P_new = I_KH @ self.P @ I_KH.T + K @ R_eff @ K.T
         self.P = 0.5 * (P_new + P_new.T)
 
+        dtheta = dx[6:9].copy()
         self.inject_error(dx)
-        self._apply_error_reset(dx)
+        self._apply_error_reset(dtheta)
         self.stabilize_covariance()
         return True
 
-    # ------------------------------------------------------------------ measurement models
     def h_gnss(self) -> np.ndarray:
         return self.p + quat_to_R(self.q) @ self.l_gnss
 
@@ -429,16 +332,15 @@ class EgoErrorStateEKF3D:
         return H
 
     def h_wheel(self) -> np.ndarray:
-        """[scaled longitudinal speed, lateral speed (~0), vertical speed (~0)] in the body frame."""
         v_body = quat_to_R(self.q).T @ self.v_world
-        return np.array([(1.0 + self.wheel_scale) * v_body[0], v_body[1], v_body[2]], dtype=float)
+        return np.array([(1.0 + self.wheel_scale) * v_body[0], v_body[1]], dtype=float)
 
     def H_wheel(self) -> np.ndarray:
-        H = np.zeros((3, STATE_SIZE))
+        H = np.zeros((2, STATE_SIZE))
         R_bw = quat_to_R(self.q)
         v_body = R_bw.T @ self.v_world
-        H[:, 3:6] = R_bw.T
-        H[:, 6:9] = skew(v_body)
+        H[:, 3:6] = R_bw.T[:2, :]
+        H[0:2, 6:9] = skew(v_body)[0:2, :]
         H[0, 3:9] *= (1.0 + self.wheel_scale)
         H[0, 15] = v_body[0]
         return H
@@ -477,7 +379,6 @@ class EgoErrorStateEKF3D:
         H[:, 6:9] = np.eye(3)
         return H
 
-    # ------------------------------------------------------------------ sensor updates
     def update_gnss(self, gnss_data) -> None:
         if self.last_gnss_frame is not None and gnss_data.frame == self.last_gnss_frame:
             return
@@ -509,26 +410,16 @@ class EgoErrorStateEKF3D:
             sensor_name="compass", gate="hard")
 
     def update_wheel(self, speed_measurement: Optional[float]) -> None:
-        """
-        Longitudinal speed (scale-factor model) + planar-motion constraints vy ~ 0 and vz ~ 0.
-        The constraints do not need the speedometer, so they are still applied on a speedometer dropout.
-        """
-        z = np.array([0.0 if speed_measurement is None else float(speed_measurement), 0.0, 0.0])
-        sig = [math.sqrt(float(hp.R_WHEEL[0, 0])), math.sqrt(float(hp.R_WHEEL[1, 1])),
-               float(_hp("SIGMA_WHEEL_VERT", 0.15))]
-        names = ["wheel_longitudinal", "wheel_lateral", "wheel_vertical"]
-        rows = [0, 1, 2] if speed_measurement is not None else [1, 2]
-        if not _hp("USE_PLANAR_CONSTRAINT", True):
-            rows = [r for r in rows if r != 2]
-        # a long/vertical innovation is far more likely to be a wrong *prior* (IMU hit) than a wrong sensor,
-        # so those rows are never down-weighted by more than WHEEL_MAX_R_SCALE
-        caps = [_hp("WHEEL_MAX_R_SCALE", 5.0), None, _hp("WHEEL_MAX_R_SCALE", 5.0)]
-        for i in rows:
+        if speed_measurement is None:
+            return
+        z = np.array([float(speed_measurement), 0.0])
+        for i in range(2):
             z_pred = self.h_wheel()
             H = self.H_wheel()
             self.update_error_state(
                 z=np.array([z[i]]), z_pred=np.array([z_pred[i]]), H=H[i:i + 1, :],
-                R=np.array([[sig[i] ** 2]]), sensor_name=names[i], gate="soft", max_scale=caps[i])
+                R=np.array([[hp.R_WHEEL[i, i]]]),
+                sensor_name="wheel_longitudinal" if i == 0 else "wheel_lateral", gate="soft")
 
     def detect_stationary(self, wheel_speed: Optional[float], accel_raw: np.ndarray, gyro_raw: np.ndarray) -> bool:
         self._imu_win.append(np.concatenate([accel_raw, gyro_raw]))
@@ -584,36 +475,6 @@ class EgoErrorStateEKF3D:
         self.update_error_state(z=v, z_pred=self.h_vel_world(), H=self.H_vel_world(), R=hp.R_GNSS_VEL,
                                 sensor_name="GNSS_vel", gate="soft")
 
-    # ------------------------------------------------------------------ start-up
-    def _maybe_finish_init(self, moving: bool) -> None:
-        """
-        Stationary alignment. While the vehicle is at rest at start-up the filter holds p, v and collects IMU
-        samples (the CARLA spawn/settle transient is skipped). When enough samples are in and GNSS has arrived:
-        roll/pitch come from the gravity direction (this also captures suspension squat, which the spawn
-        transform does not know about) and the gyro bias from the mean gyro.
-        """
-        n_buf = len(self._init_buf)
-        gnss_ok = self.last_gnss_frame is not None
-        ready = n_buf >= _hp("INIT_SETTLE_FRAMES", 10)
-        timeout = self._n_frames >= _hp("INIT_MAX_FRAMES", 60)
-        if not ((ready and gnss_ok) or (moving and gnss_ok) or timeout):
-            return
-        if n_buf >= 5:
-            buf = np.asarray(self._init_buf)
-            f = np.median(buf[:, :3], axis=0)
-            if _hp("INIT_ALIGN_TILT", True) and abs(float(np.linalg.norm(f)) - hp.G) < hp.GRAVITY_NORM_TOL:
-                roll = math.atan2(f[1], f[2])
-                pitch = math.atan2(-f[0], math.hypot(f[1], f[2]))
-                _, _, yaw = quat_to_euler(self.q)
-                self.q = euler_to_quat(roll, pitch, yaw)
-                self._set_cov_block([6, 7], math.radians(0.5) ** 2)
-            if _hp("INIT_ESTIMATE_GYRO_BIAS", True) and self.est_bg:
-                self.bg = np.median(buf[:, 3:], axis=0)
-                self._set_cov_block([9, 10, 11], _hp("SIGMA_GYRO_BIAS_INIT", math.radians(0.2)) ** 2)
-        self.initialized = True
-        self._init_buf = []
-
-    # ------------------------------------------------------------------ SLAM fusion
     def _ekf_pose(self) -> np.ndarray:
         T = np.eye(4)
         T[0:3, 0:3] = quat_to_R(self.q)
@@ -628,99 +489,19 @@ class EgoErrorStateEKF3D:
                 old = next(iter(self._frame_pose))
                 self._frame_pose.pop(old)
                 self._frame_time.pop(old, None)
-            if not self.stationary:                 # no point scan-matching while standing still
+            if not self.stationary:                 
                 self.slam.push_frame(lidar_data, self._frame_pose[step], step, dynamic_boxes)
 
         res = self.slam.get_latest_result()
-        if res is None:
-            return
+        if res is None: return
         self.slam_log.append((step, res))
         if res.frame_id not in self._frame_pose:
             return
-        mode = hp.SLAM_FUSION_MODE
-        if mode == "absolute":
-            self._drop_clone()
+        if hp.SLAM_FUSION_MODE == "absolute":
             self._update_slam_absolute(res)
-        elif mode == "relative_clone" and res.frame_id == step:
-            # the clone must sit at the *same* instant as the SLAM pose -> only valid with zero latency
-            self._update_slam_relative_clone(res)
         else:
-            self._drop_clone()
             self._update_slam_relative(res)
 
-    # ---- stochastic cloning ------------------------------------------------
-    def _drop_clone(self) -> None:
-        if self.n > STATE_SIZE:
-            self.P = self.P[:STATE_SIZE, :STATE_SIZE].copy()
-            self.n = STATE_SIZE
-        self._clone = None
-        self._slam_ref_c = None
-
-    def _reset_clone(self, new_ref: dict) -> None:
-        """Replace the clone by one of the current (posterior) pose error: P_aug = A P A^T."""
-        self._drop_clone()
-        S = STATE_SIZE
-        A = np.zeros((S + CLONE_SIZE, S))
-        A[:S, :S] = np.eye(S)
-        A[S:S + 3, 0:3] = np.eye(3)
-        A[S + 3:S + 6, 6:9] = np.eye(3)
-        self.P = A @ self.P @ A.T
-        self.n = S + CLONE_SIZE
-        self._clone = {"p": self.p.copy(), "q": self.q.copy()}
-        self._slam_ref_c = new_ref
-
-    def _update_slam_relative_clone(self, res: SlamOutput) -> None:
-        """
-        Relative-pose fusion by stochastic cloning. The measurement is the SLAM *displacement and rotation
-        between two scans*, expressed in the earlier vehicle frame:
-            dp = R0^T (p1 - p0),   dR = R0^T R1
-        p0, R0 are a clone of the filter pose at the earlier scan, so the filter's own correlation between the
-        two instants (e.g. an integrated velocity error) is accounted for. This replaces the legacy
-        "window-mean velocity vs current velocity" approximation.
-        """
-        t1 = self._frame_time[res.frame_id]
-        ref = self._slam_ref_c
-        new_ref = {"t": t1, "p": res.p.copy(), "q": res.q.copy(), "epoch": res.map_epoch}
-        if (ref is None or self._clone is None or ref["epoch"] != res.map_epoch or t1 <= ref["t"]
-                or t1 - ref["t"] > hp.SLAM_REL_MAX_DT):
-            self._reset_clone(new_ref)
-            return
-        if t1 - ref["t"] < hp.SLAM_REL_MIN_DT:
-            return
-
-        R0s, R1s = quat_to_R(ref["q"]), quat_to_R(res.q)
-        dp_s = R0s.T @ (res.p - ref["p"])
-        dR_s = R0s.T @ R1s
-
-        R0, R1 = quat_to_R(self._clone["q"]), quat_to_R(self.q)
-        dp_e = R0.T @ (self.p - self._clone["p"])
-        dR_e = R0.T @ R1
-        rot_res = Rotation.from_matrix(dR_e.T @ dR_s).as_rotvec()
-
-        S = STATE_SIZE
-        H = np.zeros((6, S + CLONE_SIZE))
-        H[0:3, 0:3] = R0.T                          # d dp / d p1
-        H[0:3, S:S + 3] = -R0.T                     # d dp / d p0 (clone)
-        H[0:3, S + 3:S + 6] = skew(dp_e)            # d dp / d theta0 (clone)
-        H[3:6, 6:9] = np.eye(3)                     # d rot / d theta1
-        H[3:6, S + 3:S + 6] = -dR_e.T               # d rot / d theta0 (clone)
-
-        dist = float(np.linalg.norm(dp_s))
-        sig_p2 = 2.0 * hp.SIGMA_SLAM_REL_POS**2 + (_hp("SLAM_REL_SCALE_FLOOR", 0.01) * dist) ** 2
-        S0 = dR_e @ res.trans_shape @ dR_e.T        # ICP weak-direction shape: vehicle frame at t1 -> frame at t0
-        sig_r2 = 2.0 * hp.SIGMA_SLAM_REL_ROT**2 + _hp("SLAM_REL_ROT_FLOOR_RAD", math.radians(0.1)) ** 2
-        Rm = np.zeros((6, 6))
-        Rm[0:3, 0:3] = sig_p2 * S0
-        Rm[3:6, 3:6] = np.eye(3) * sig_r2
-
-        self.update_error_state(z=np.concatenate([dp_s, rot_res]),
-                                z_pred=np.concatenate([dp_e, np.zeros(3)]),
-                                H=H, R=Rm, sensor_name="slam_rel_pose", gate="hard")
-        self._reset_clone(new_ref)
-        if hp.SLAM_ABS_TILT_Z:
-            self._update_slam_tilt_z(res)
-
-    # ---- legacy window-mean velocity fusion (kept for async SLAM / ablation) ----
     def _window_stats(self, t0: float, t1: float):
         sel = [h for h in self.history if t0 + 1e-9 < h[0] <= t1 + 1e-9]
         if len(sel) < 2:
@@ -745,8 +526,7 @@ class EgoErrorStateEKF3D:
             self._slam_ref = new_ref
             return
         dt_w = t1 - ref["t"]
-        if dt_w < hp.SLAM_REL_MIN_DT:
-            return
+        if dt_w < hp.SLAM_REL_MIN_DT:   return                                   
         stats = self._window_stats(ref["t"], t1)
         if stats is None:
             self._slam_ref = new_ref
@@ -761,7 +541,7 @@ class EgoErrorStateEKF3D:
         w_ekf = Rotation.from_matrix(R_rel_ekf).as_rotvec() / tot
 
         R_now = quat_to_R(self.q)
-        Rm = R_now.T @ R0e
+        Rm = R_now.T @ R0e                           
         y_u = Rm @ (u_slam - u_ekf)
         u_now = Rm @ u_ekf
         y_w = w_slam - w_ekf
@@ -823,7 +603,6 @@ class EgoErrorStateEKF3D:
         self.update_error_state(z=q_meas, z_pred=self.h_slam_att(), H=self.H_slam_att(), R=hp.R_SLAM_ATT,
                                 residual_fn=self._att_residual, sensor_name="slam_attitude", gate="hard")
 
-    # ------------------------------------------------------------------ speedometer / output
     @staticmethod
     def get_simulated_speedometer(vehicle, noise_std: float = None, quantization: float = None,
                                   scale_err: float = None, dropout_prob: float = None,
@@ -852,27 +631,12 @@ class EgoErrorStateEKF3D:
         R_bw = quat_to_R(self.q)
         v_body = R_bw.T @ self.v_world
         speed = float(np.linalg.norm(v_body))
-
-        # --- IMU-based acceleration (low-passed): still used for the vertical axis / legacy mode
         a_world = R_bw @ self.a_body + np.array([0.0, 0.0, -hp.G])
         alpha = self.dt / (hp.ACCEL_OUT_LPF_TAU + self.dt) if hp.ACCEL_OUT_LPF_TAU > 0 else 1.0
         self._a_world_lpf = a_world.copy() if self._a_world_lpf is None else \
             (1.0 - alpha) * self._a_world_lpf + alpha * a_world
         a_w = self._a_world_lpf
-        a_b = R_bw.T @ a_w                                   # body-frame kinematic acceleration (IMU path)
-
-        # --- kinematic acceleration from the filter's own velocity: a_b = d(v_body)/dt + omega x v_body.
-        # Immune to CARLA's accelerometer artefacts; the filter velocity is pinned by wheel speed + NHC.
-        if _hp("ACCEL_OUT_MODE", "kinematic") == "kinematic":
-            if self._vb_prev is None or self.dt <= 0.0:
-                a_raw = np.zeros(3)
-            else:
-                a_raw = (v_body - self._vb_prev) / self.dt + np.cross(self.gyro, v_body)
-            self._vb_prev = v_body.copy()
-            alpha_k = self.dt / (_hp("ACCEL_KIN_TAU", 0.10) + self.dt)
-            self._a_kin_lpf = a_raw.copy() if self._a_kin_lpf is None else \
-                (1.0 - alpha_k) * self._a_kin_lpf + alpha_k * a_raw
-            a_b = np.array([self._a_kin_lpf[0], self._a_kin_lpf[1], a_b[2]])
+        a_b = R_bw.T @ a_w                                   # body-frame kinematic acceleration
         zs = hp.OUT_Z_SIGN
 
         state = Ego3DState(
@@ -890,46 +654,34 @@ class EgoErrorStateEKF3D:
         self.prev_state = state
         return state
 
-    # ------------------------------------------------------------------ main entry
     def compute(self, dt: float, vehicle, imu_data, gnss_data, lidar_data, step,
                 wheel_speed=UNSET, dynamic_boxes=None) -> Ego3DState:
         self.t += dt
         self.dt = dt
-        self._n_frames += 1
         accel_raw, gyro_raw = self.carla_imu_to_body(imu_data)
         accel_body = np.clip(self._accel_spike(accel_raw), -hp.ACCEL_CLIP, hp.ACCEL_CLIP)
         gyro_body = np.clip(self._gyro_spike(gyro_raw), -hp.GYRO_CLIP_RAD, hp.GYRO_CLIP_RAD)
+        if self.last_gnss_frame is None:
+            gyro_body = np.zeros(3)
 
-        ss = (self.get_simulated_speedometer(vehicle, rng=self._rng) if wheel_speed is UNSET else wheel_speed)
-        self.last_wheel_speed = ss
-
-        # start-up: at rest before alignment -> hold p/v, collect samples, skip the spawn transient
-        moving = ss is not None and abs(ss) > hp.ZUPT_WHEEL_MAX
-        hold = (not self.initialized) and not moving
-        if hold and self._n_frames > _hp("INIT_SKIP_FRAMES", 5):
-            self._init_buf.append(np.concatenate([accel_body, gyro_body]))
-
-        self.gyro = np.zeros(3) if hold else gyro_body - self.bg
+        self.gyro = gyro_body - self.bg
         self.a_body = accel_body - self.ba
-        infl = 1.0 if hold else self._sanitize_imu_accel(dt, ss)
-        self.propagate(dt, hold=hold, accel_noise_scale=infl)
-        self._ss_prev = ss
+        self.propagate(dt)
 
         if gnss_data is not None:
             self.update_gnss(gnss_data)
         if imu_data is not None:
             self.update_compass(imu_data)
-        self.update_wheel(ss)
 
-        if not self.initialized:
-            self._maybe_finish_init(moving)
+        ss = (self.get_simulated_speedometer(vehicle, rng=self._rng) if wheel_speed is UNSET else wheel_speed)
+        self.last_wheel_speed = ss
+        self.update_wheel(ss)
 
         self.stationary = bool(hp.USE_ZUPT and self.last_gnss_frame is not None
                                and self.detect_stationary(ss, accel_body, gyro_body))
-        if self.initialized:
-            if self.stationary:
-                self.update_zupt(gyro_body)
-            self.update_gravity(accel_body)
+        if self.stationary:
+            self.update_zupt(gyro_body)
+        self.update_gravity(accel_body)
 
         self.history.append((self.t, quat_to_R(self.q), self.v_world.copy(), self.gyro.copy(), dt))
         self.update_slam(lidar_data, step, dynamic_boxes)
@@ -938,6 +690,7 @@ class EgoErrorStateEKF3D:
     def nis_summary(self) -> dict:
         """Per-sensor consistency. mean_nis_per_dof should be ~1: >>1 -> R too optimistic (or bias),
         <<1 -> R too conservative. accept_rate shows how often the gate fires."""
+        print("printing nis")
         out = {}
         for r in self.nis_history:
             s = out.setdefault(r["sensor"], {"n": 0, "acc": 0, "sum": 0.0, "fin": 0, "dof": r["dof"]})

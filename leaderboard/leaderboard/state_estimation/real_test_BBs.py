@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import collections
 import json
 import math
 import os
@@ -362,7 +363,8 @@ def diagnose_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List
                     ego_speed: Dict[str, float], thresh: float = hp.TP_DISTANCE_THRESHOLD,
                     max_range: float = 50.0, range_edges: Sequence[float] = (0.0, 15.0, 30.0, 50.0),
                     static_speed: float = 0.2, score_edges: Sequence[float] = (0.2, 0.3, 0.4, 0.5),
-                    ego_pose: Optional[Dict[str, Tuple[float, float, float]]] = None) -> dict:
+                    ego_pose: Optional[Dict[str, Tuple[float, float, float]]] = None,
+                    ghost_ctx: Optional[Dict[tuple, Tuple[str, str]]] = None) -> dict:
     """Where do the errors come from? Range, false-positive anatomy, precision vs score, heading flips, velocity."""
     inner = list(range_edges[1:-1])
     nb = len(range_edges) - 1
@@ -423,10 +425,13 @@ def diagnose_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List
                     wy = ey0 + sy_ * float(p.translation[0]) + cy_ * float(p.translation[1])
                 else:
                     wx = wy = float("nan")
+                ctx = ("", "")
+                if ghost_ctx:
+                    ctx = ghost_ctx.get((fid, round(float(p.translation[0]), 3), round(float(p.translation[1]), 3)), ("", ""))
                 ghost_rows.append((fid, float(p.translation[0]), float(p.translation[1]), wx, wy,
                                    float(p.size[0]), float(p.size[1]), float(p.size[2]),
                                    float(np.linalg.norm(p.velocity)), s_,
-                                   float(np.linalg.norm(p.translation[:2]))))
+                                   float(np.linalg.norm(p.translation[:2])), ctx[0], ctx[1]))
         es = ego_speed.get(fid, float("nan"))
         for gi, pi in pairs:
             g, p = gt[gi], pred[pi]
@@ -489,6 +494,18 @@ def print_diagnostics(d: dict) -> None:
                 print(f"  {cx*2.0:>9.1f}{cy*2.0:>9.1f}{len(v):>7}{len({r[0] for r in v}):>8}"
                       f"{np.mean([r[5] for r in v]):>8.1f}x{np.mean([r[6] for r in v]):<4.1f}{np.mean([r[8] for r in v]):>12.2f}")
 
+    if rows and any(r[11] for r in rows):
+        probed = [r for r in rows if r[11]]
+        nothing = [r for r in probed if r[11] == "none" and r[12] == "none"]
+        env_c = collections.Counter(r[11].split(":")[0] for r in probed if r[11] != "none")
+        act_c = collections.Counter(r[12].split("@")[0] for r in probed if r[12] != "none")
+        print(f"\nGhost context, probed in the LIVE world at report time ({len(probed)} ghosts probed):")
+        print(f"  nothing within the probe radius (hallucination-like): {len(nothing)} ({100*len(nothing)/len(probed):.0f}%)")
+        if env_c:
+            print("  environment-object labels nearby: " + ", ".join(f"{k}: {v}" for k, v in env_c.most_common(6)))
+        if act_c:
+            print("  actor types nearby:               " + ", ".join(f"{k}: {v}" for k, v in act_c.most_common(6)))
+
     edges = d["score_edges"]
     if any(s["n"] for s in d["score_stats"]):
         labels = [f"<{edges[0]:.2f}"] + [f"{edges[i]:.2f}-{edges[i+1]:.2f}" for i in range(len(edges) - 1)] + [f">={edges[-1]:.2f}"]
@@ -543,7 +560,8 @@ def print_diagnostics(d: dict) -> None:
 class OnlineEvaluator:
     def __init__(self, world: carla.World, ego_actor_id: int, thresholds: Sequence[float] = hp.DIST_THRESHOLDS,
                  tp_threshold: float = hp.TP_DISTANCE_THRESHOLD, max_range: float = 50, warmup_frames: int = 40,
-                 ghost_csv: Optional[str] = "bbs_ghosts.csv", stationary_stride: int = 1):
+                 ghost_csv: Optional[str] = "bbs_ghosts.csv", stationary_stride: int = 1,
+                 probe_ghosts: bool = True, probe_radius: float = 3.0, probe_refresh: int = 50):
         self.thresholds = list(thresholds)
         self.tp_threshold = tp_threshold
         self.max_range = max_range
@@ -556,6 +574,13 @@ class OnlineEvaluator:
         # env var wins, so the path can be set from `docker run -e BBS_GHOST_CSV=/some/mounted/dir/bbs_ghosts.csv`
         self.ghost_csv = os.environ.get("BBS_GHOST_CSV") or ghost_csv
         self._ghost_path_announced = False
+        self.probe_ghosts = probe_ghosts            # ask the live CARLA world what stands under each ghost
+        self.probe_radius = probe_radius
+        self.probe_refresh = probe_refresh          # frames between environment-object cache refreshes
+        self._probe_calls = 0
+        self._env_xy = np.zeros((0, 2))
+        self._env_info: List[Tuple[str, str]] = []
+        self._ghost_ctx: Dict[tuple, Tuple[str, str]] = {}
         self._gt_frames: Dict[str, List[Box]] = {}
         self._pred_frames: Dict[str, List[Box]] = {}
         self.world = world
@@ -624,16 +649,77 @@ class OnlineEvaluator:
         self._pred_frames[frame_id] = pred_boxes
 
         gt_boxes = self._gt_frames[frame_id]
+        if self.probe_ghosts:
+            try:
+                self._probe(frame_id, pred_boxes, gt_boxes, gt_ego_transform)
+            except Exception as exc:
+                print(f"[evaluator] ghost probe disabled: {exc}")
+                self.probe_ghosts = False
         gt_total = len(gt_boxes)
         gt_visible = sum(1 for b in gt_boxes if _is_visible(b))
         pred_in_range = sum(1 for b in pred_boxes if float(np.linalg.norm(b.translation[:2])) <= self.max_range)
         print(f"Frame {frame_id:>5} | GT: {gt_visible:>2} visible ({gt_total:>2} total) | Preds in range: {pred_in_range:>2}")
+
+    _PROBE_SKIP_LABELS = {"Roads", "RoadLines", "Sidewalks", "Terrain", "Ground", "Sky", "Water"}
+
+    def _refresh_env_cache(self) -> None:
+        xy, info = [], []
+        for o in self.world.get_environment_objects(carla.CityObjectLabel.Any):
+            label = str(o.type).split(".")[-1]
+            if label in self._PROBE_SKIP_LABELS:
+                continue
+            loc = o.bounding_box.location
+            xy.append((loc.x, loc.y))
+            info.append((label, o.name))
+        self._env_xy = np.asarray(xy, dtype=float).reshape(-1, 2)
+        self._env_info = info
+
+    def _probe(self, frame_id: str, pred_boxes: List[Box], gt_boxes: List[Box], ego_tf: carla.Transform) -> None:
+        """Ghost = prediction with no GT box of any kind within 2x the TP threshold. Ask the live world what is there."""
+        ghosts = []
+        for b in pred_boxes:
+            if float(np.linalg.norm(b.translation[:2])) > self.max_range:
+                continue
+            if min((center_distance(g, b) for g in gt_boxes), default=math.inf) > 2 * self.tp_threshold:
+                ghosts.append(b)
+        if not ghosts:
+            return
+        if self._probe_calls % self.probe_refresh == 0:
+            self._refresh_env_cache()
+        self._probe_calls += 1
+
+        all_actors = self.world.get_actors()
+        actors = []
+        for a in list(all_actors.filter("vehicle.*")) + list(all_actors.filter("static.*")) + list(all_actors.filter("walker.*")):
+            if a.id == self.ego_actor_id:
+                continue
+            loc = a.get_location()
+            actors.append((loc.x, loc.y, a.type_id))
+        act_xy = np.asarray([(x, y) for x, y, _ in actors], dtype=float).reshape(-1, 2)
+
+        c, s = math.cos(math.radians(ego_tf.rotation.yaw)), math.sin(math.radians(ego_tf.rotation.yaw))
+        for b in ghosts:
+            wx = ego_tf.location.x + c * float(b.translation[0]) - s * float(b.translation[1])
+            wy = ego_tf.location.y + s * float(b.translation[0]) + c * float(b.translation[1])
+            env_txt, act_txt = "none", "none"
+            if len(self._env_xy):
+                d = np.hypot(self._env_xy[:, 0] - wx, self._env_xy[:, 1] - wy)
+                i = int(np.argmin(d))
+                if d[i] <= self.probe_radius:
+                    env_txt = f"{self._env_info[i][0]}:{self._env_info[i][1][:30]}@{d[i]:.1f}".replace(",", ";")
+            if len(act_xy):
+                d = np.hypot(act_xy[:, 0] - wx, act_xy[:, 1] - wy)
+                i = int(np.argmin(d))
+                if d[i] <= self.probe_radius:
+                    act_txt = f"{actors[i][2]}@{d[i]:.1f}"
+            self._ghost_ctx[(frame_id, round(float(b.translation[0]), 3), round(float(b.translation[1]), 3))] = (env_txt, act_txt)
 
     def reset(self) -> None:
         self._gt_frames.clear()
         self._pred_frames.clear()
         self._ego_speed.clear()
         self._ego_pose.clear()
+        self._ghost_ctx.clear()
         self._stopped = 0
         self._seen = 0
 
@@ -646,11 +732,11 @@ class OnlineEvaluator:
 
     def diagnose(self) -> dict:
         return diagnose_frames(self._gt_frames, self._pred_frames, self._ego_speed, self.tp_threshold,
-                               self.max_range, ego_pose=self._ego_pose)
+                               self.max_range, ego_pose=self._ego_pose, ghost_ctx=self._ghost_ctx)
 
     def save_ghosts_csv(self, rows: list, path: "str | Path") -> None:
         with open(path, "w") as f:
-            f.write("frame,x_ego,y_ego,x_world,y_world,length,width,height,speed,score,range\n")
+            f.write("frame,x_ego,y_ego,x_world,y_world,length,width,height,speed,score,range,ctx_env,ctx_actor\n")
             for r in rows:
                 f.write(",".join(str(v) for v in r) + "\n")
 

@@ -4,45 +4,8 @@ import numpy as np
 import math
 import carla
 
-# --- Planar-motion constraint (vz_body ~ 0) and wheel gating
-USE_PLANAR_CONSTRAINT = True
-SIGMA_WHEEL_VERT = 0.15            # m/s; suspension motion is real, don't make this too tight
-WHEEL_MAX_R_SCALE = 5.0            # longitudinal/vertical rows are never down-weighted more than this (was 50)
- 
-# --- IMU cross-check against wheel/planar kinematics (clamp + process-noise inflation)
-IMU_XCHECK = True
-IMU_XCHECK_LONG = 5.0              # m/s^2 allowed deviation of IMU-implied dvx/dt from d(wheel speed)/dt
-IMU_XCHECK_LAT = 4.0               # m/s^2 allowed |dvy/dt|
-IMU_XCHECK_VERT = 3.0              # m/s^2 allowed |dvz/dt|
-IMU_Q_INFLATE_MAX = 25.0
- 
-# --- Published acceleration
-ACCEL_OUT_MODE = "kinematic"       # "kinematic": dv_body/dt + w x v (x, y);  "imu": legacy LPF'd IMU
-ACCEL_KIN_TAU = 0.10               # s, smoothing of the differentiated velocity
-ACCEL_OUT_LPF_TAU = 0.05           # s, now only used for the vertical axis (was 0.15 for everything)
- 
-# --- Start-up
-USE_STARTUP_ALIGNMENT = True       # hold + stationary alignment; check `ekf.initialized` in evaluation
-INIT_SKIP_FRAMES = 5               # spawn/settle transient samples ignored
-INIT_SETTLE_FRAMES = 10            # stationary samples needed for alignment
-INIT_MAX_FRAMES = 60               # give up waiting after this many frames
-INIT_ALIGN_TILT = True
-INIT_ESTIMATE_GYRO_BIAS = True
-SIGMA_GYRO_BIAS_INIT = math.radians(0.2)
- 
-# --- Bias handling
-ESTIMATE_GYRO_BIAS = True
-ESTIMATE_ACCEL_BIAS = True         # set False if the CARLA IMU has no accelerometer bias configured
-SIGMA_GYRO_BIAS_P0 = math.radians(2.0)
-SIGMA_ACCEL_BIAS_P0 = 0.1          # was 0.4
- 
-# --- SLAM fusion
-SLAM_FUSION_MODE = "relative_clone"   # needs SLAM_SYNCHRONOUS = True; otherwise falls back to "relative"
-SLAM_ABS_TILT_Z = False               # absolute SLAM z/tilt follows SLAM drift -> hurt position in my tests
-SLAM_REL_SCALE_FLOOR = 0.01           # fraction of the displacement (scan-matching scale error)
-SLAM_REL_ROT_FLOOR_RAD = math.radians(0.1)
-
-RADAR_GATE_FLOOR_STD = 0.0
+RADAR_GATE_FLOOR_STD = 2.0
+DET_VELOCITY_MEAS_STD = 3.0
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 

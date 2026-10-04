@@ -418,7 +418,7 @@ def process_radar(state: CalculatedState, radar_arr: np.ndarray, sensor_transfor
     p_world = (T_sensor_to_world @ p_sensor.T).T[:, :3]
     u_world = u_sensor @ R_sensor_to_world.T
     v_r_abs = v_r + u_world @ v_ego_world
-    DEBUG_RADAR_SIGN = False       # module level
+    DEBUG_RADAR_SIGN = True       # module level
     _RADAR_STATS = [0, 0, 0]       # module level
 
     if DEBUG_RADAR_SIGN and np.linalg.norm(v_ego_world) > 3.0:

@@ -65,12 +65,12 @@ class ObjectUKF:
         self.ukf.x[10] = z0
         self.ukf.x[11] = h0
 
-        self.ukf.P = np.diag([hp.POSITION_STD**2, hp.POSITION_STD**2, hp.DET_VELOCITY_STD**2, hp.DET_VELOCITY_STD**2,
+        self.ukf.P = np.diag([hp.POSITION_STD**2, hp.POSITION_STD**2, hp.DET_VELOCITY_MEAS_STD**2, hp.DET_VELOCITY_MEAS_STD**2,
             hp.ACCEL_STD**2, hp.ACCEL_STD**2, hp.YAW_STD**2, hp.YAW_RATE_STD**2, hp.L_STD**2, hp.W_STD**2, hp.Z_STD**2, hp.H_STD**2])
         self.ukf.Q = self.make_process_noise(dt)
         self.lidarR = np.diag([hp.POSITION_STD**2, hp.POSITION_STD**2, hp.LIDAR_YAW_STD**2,
                                 hp.LIDAR_L_STD**2, hp.LIDAR_W_STD**2, hp.LIDAR_Z_STD**2, hp.LIDAR_H_STD**2])
-        self.detVelR = np.diag([hp.DET_VELOCITY_STD**2, hp.DET_VELOCITY_STD**2])
+        self.detVelR = np.diag([hp.DET_VELOCITY_MEAS_STD**2, hp.DET_VELOCITY_MEAS_STD**2])
         self.radarR = np.array([[hp.RADAR_VELOCITY_STD**2]])
         self.ukf.R = self.lidarR
 
