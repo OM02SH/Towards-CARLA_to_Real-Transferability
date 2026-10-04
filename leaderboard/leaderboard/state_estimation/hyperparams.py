@@ -6,14 +6,9 @@ import carla
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# ============================================================================
-# SENSOR MOUNTS (CARLA vehicle-relative coordinates, exactly as in your
-# sensors() dict: x forward, y RIGHT, z up, angles in degrees).
-# !!! FILL THESE IN from your sensor configuration. (0,0,0) = no lever arm. !!!
-# ============================================================================
 GNSS_POS_CARLA = (0.0, 0.0, 0.0)
 LIDAR_POS_CARLA = (0.0, 0.0, 0.0)
-LIDAR_RPY_DEG_CARLA = (0.0, 0.0, 0.0)     # roll, pitch, yaw
+LIDAR_RPY_DEG_CARLA = (0.0, 0.0, 0.0)     
  
 # ============================================================================
 # EGO STATE
@@ -21,12 +16,11 @@ LIDAR_RPY_DEG_CARLA = (0.0, 0.0, 0.0)     # roll, pitch, yaw
 G = 9.81
 EARTH_RADIUS_EQUA = 6378137.0
  
-# ---- measurement noise (1-sigma). Ideally = the noise you configured in CARLA.
 SIGMA_GNSS_XY = 1.0
 SIGMA_GNSS_Z = 0.75
 SIGMA_COMPASS = math.radians(5.0)
-SIGMA_WHEEL_LONG = 0.08          # was 0.2; sim speedometer noise is 0.05 + quantisation
-SIGMA_WHEEL_LAT = 0.10           # non-holonomic constraint
+SIGMA_WHEEL_LONG = 0.08          
+SIGMA_WHEEL_LAT = 0.10           
 SIGMA_GRAVITY_DIRECTION = 0.1
 SIGMA_GNSS_VEL = 1.5
  
@@ -35,78 +29,65 @@ SIGMA_GYRO = math.radians(0.5)
 SIGMA_ACCEL = 0.35
 SIGMA_GYRO_BIAS_RW = math.radians(0.01)
 SIGMA_ACCEL_BIAS_RW = 0.01
-SIGMA_WHEEL_SCALE_RW = 1e-3      # wheel speed *scale factor* random walk (1/sqrt(s))
+SIGMA_WHEEL_SCALE_RW = 1e-3      
  
-# ---- initial covariance for the wheel scale-factor state (dimensionless)
 SIGMA_WHEEL_SCALE_P0 = 0.05
  
-# ---- gravity-direction update
 GRAVITY_NORM_TOL = 0.5
 GRAVITY_UPDATE_MAX_SPEED = 3
 GRAVITY_DYNAMIC_SCALE = 4.0
  
-# ---- IMU pre-processing
-ACCEL_CLIP = 40.0                # safety clip only (was +-10, which clipped gravity+noise on z)
+ACCEL_CLIP = 40.0                
 GYRO_CLIP_RAD = math.radians(100.0)
-ACCEL_SPIKE_THRESH = 8.0         # m/s^2   Hampel-style spike rejection (median of 3)
-GYRO_SPIKE_THRESH = 1.0          # rad/s
+ACCEL_SPIKE_THRESH = 8.0         
+GYRO_SPIKE_THRESH = 1.0          
  
-# ---- ZUPT (zero-velocity update) / stationary detection
 USE_ZUPT = True
-ZUPT_WINDOW = 10                 # samples
-ZUPT_ACCEL_VAR = 0.05            # sum of per-axis accel variance over window
-ZUPT_GYRO_MAX = 0.03             # rad/s, |mean(gyro) - bias|
-ZUPT_WHEEL_MAX = 0.05            # m/s, |wheel speed| below this counts as standing
-ZUPT_FILTER_SPEED_MAX = 0.3      # used only if wheel speed dropped out
-SIGMA_ZUPT_VEL = 0.02            # m/s
+ZUPT_WINDOW = 10                 
+ZUPT_ACCEL_VAR = 0.05            
+ZUPT_GYRO_MAX = 0.03             
+ZUPT_WHEEL_MAX = 0.05            
+ZUPT_FILTER_SPEED_MAX = 0.3      
+SIGMA_ZUPT_VEL = 0.02            
 SIGMA_ZUPT_GYRO = math.radians(1.0)
  
-# ---- simulated speedometer (get_simulated_speedometer)
 SPEEDO_NOISE_STD = 0.05
 SPEEDO_QUANT = 0.03
-SPEEDO_SCALE_ERR = 0.01          # multiplicative error (real encoders: scale, not offset)
+SPEEDO_SCALE_ERR = 0.01          
 SPEEDO_DROPOUT = 0.01
  
-# ---- GNSS-regression velocity pseudo-measurement (double-counts GNSS; OFF by default)
 USE_GNSS_VELOCITY = False
 MAX_HISTORY = 20
 MIN_HISTORY = 5
  
-# ---- robust handling
 CHI2_999 = {1: 10.83, 2: 13.82, 3: 16.27, 4: 18.47, 5: 20.52, 6: 22.46}
 MAX_R_SCALE = 50.0
-GATE_MAX_CONSEC_REJECT = 10      # hard-gated sensor is force-accepted (inflated R) after N rejections
-HISTORY_LEN = 600                # EKF steps kept for delayed / windowed SLAM fusion
+GATE_MAX_CONSEC_REJECT = 10      
+HISTORY_LEN = 600                
  
-# ---- output (extract_state_from_filter)
-ACCEL_OUT_LPF_TAU = 0.15         # s, first-order low-pass on the reported accelerations
-# Sign conventions of the *reported* fields. Verify each with a regression of
-# estimate vs GT (slope must be +1) and flip here if needed:
-OUT_YAW_RATE_SIGN = -1.0         # yaw_rad is reported as -yaw_ekf, so yaw_rate must flip too
-OUT_Z_SIGN = +1.0                # z is not mirrored between CARLA (LH) and the EKF (RH)
+ACCEL_OUT_LPF_TAU = 0.15         
+OUT_YAW_RATE_SIGN = -1.0         
+OUT_Z_SIGN = +1.0                
  
 # ============================================================================
 # SLAM FUSION
 # ============================================================================
-SLAM_FUSION_MODE = "relative"    # "relative" (drift-free, recommended) | "absolute"
-SLAM_SYNCHRONOUS = True          # True: deterministic (no thread). False: async worker
+SLAM_FUSION_MODE = "relative"    
+SLAM_SYNCHRONOUS = True          
  
-# ---- relative mode: non-overlapping windows of consecutive SLAM poses
-SLAM_REL_MIN_DT = 0.30           # s, minimum baseline for one measurement
-SLAM_REL_MAX_DT = 1.50           # s, longer gaps -> just restart the window
-SIGMA_SLAM_REL_POS = 0.01        # m, per-scan relative translation noise
+SLAM_REL_MIN_DT = 0.30           
+SLAM_REL_MAX_DT = 1.50           
+SIGMA_SLAM_REL_POS = 0.01        
 SIGMA_SLAM_REL_ROT = math.radians(0.1)
-SLAM_REL_VEL_FLOOR = 0.05        # m/s   model-mismatch floor
-SLAM_REL_GYRO_FLOOR = 0.01       # rad/s
-SLAM_INFO_COND_CAP = 100.0       # max inflation of weakly constrained ICP directions
-# Relative mode has no absolute roll/pitch/z while moving. Scan-to-map ICP constrains them well
-# (ground plane) and they drift slowly, so fuse them loosely as absolute (delay-compensated) measurements.
+SLAM_REL_VEL_FLOOR = 0.05        
+SLAM_REL_GYRO_FLOOR = 0.01       
+SLAM_INFO_COND_CAP = 100.0       
+
 SLAM_ABS_TILT_Z = True
 SIGMA_SLAM_TILT = math.radians(1.0)
 SIGMA_SLAM_Z = 0.30
  
-# ---- absolute mode (only used if SLAM_FUSION_MODE == "absolute")
-SIGMA_SLAM_POS = 0.30            # was 0.03: SLAM error is drift-like, not white
+SIGMA_SLAM_POS = 0.30            
 SIGMA_SLAM_ATT = math.radians(2.0)
  
 # ============================================================================
@@ -132,12 +113,12 @@ LOOP_RMSE_MAX = 0.3
  
 GLOBAL_OPT_EDGE_PRUNE_THRESHOLD = 0.25
  
-SUBMAP_KEYFRAMES = 3             # scan-to-submap (last N keyframes) instead of last keyframe only
-USE_ROBUST_KERNEL = True         # Tukey loss in point-to-plane ICP
-ICP_ROBUST_K = 0.3               # m
-USE_GICP = False                 # needs Open3D >= 0.17; falls back automatically
-DYNAMIC_BOX_MARGIN = 0.3         # m, inflation of dynamic-object boxes
-DYNAMIC_MIN_SPEED = 0.3          # m/s, CARLA helper: actors slower than this are kept in the map
+SUBMAP_KEYFRAMES = 3
+USE_ROBUST_KERNEL = True
+ICP_ROBUST_K = 0.3
+USE_GICP = False
+DYNAMIC_BOX_MARGIN = 0.3
+DYNAMIC_MIN_SPEED = 0.3
  
  
 # ============================================================================
@@ -159,7 +140,6 @@ def rebuild():
 rebuild()
 
 ################ Bounding Boxes ################
-
 
 CAM_ORDER = ["cam_00", "cam_01", "cam_02", "cam_03", "cam_04", "cam_05"]
 CAM_RIG = {
@@ -195,7 +175,7 @@ OPENPCDET_TOOLS_DIR = os.path.join(_THIS_DIR, "../../../pcdet")
 OPENPCDET_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 OPENPCDET_DYNAMIC_CLASSES = {"car", "truck", "pedestrian", "bus", 'motorcycle','bicycle', 'train'}
 OPENPCDET_STATIC_CLASSES = {"wall", "fence", "guard_rail"}
-OPENPCDET_SCORE_THRESH = 0.1
+OPENPCDET_SCORE_THRESH = 0.2
 OPENPCDET_BOX_MARGIN_M = 0.3     
 cam_intrinsic = np.array([
     [552.554261, 0.0, 704.0, 0.0],
