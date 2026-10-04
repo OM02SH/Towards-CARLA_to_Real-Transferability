@@ -133,7 +133,6 @@ class CarlaStateEstimatorEngine:
         rec = SensorRecorder(self.geo_ref)
         wheel = EgoErrorStateEKF3D.get_simulated_speedometer(vehicle)   
         state.ego_state = self.ekf.compute(dt, vehicle, imu_data, gnss_data, lidar_data, step, wheel_speed= wheel)
-        print(state.ego_state)
         rec.add(step, dt, imu_data, gnss_data, lidar_data is not None, wheel, vehicle)
         rec.save(f"route_{step}.npz", self.ekf) 
         self.ego_evaluator.add_frame(frame_id=str(step),ego_state=self.state.ego_state)

@@ -76,6 +76,8 @@ def evaluate_frames(gt_frames: Dict[str, Ego3DState], pred_frames: Dict[str, Ego
     ids = [f for f in gt_frames if f in pred_frames]   # insertion (time) order
 
     def col(frames, name):
+        print("name: ", name)
+        print(frames)
         return np.array([getattr(frames[f], name) for f in ids], dtype=float)
 
     def mat(frames, names):
