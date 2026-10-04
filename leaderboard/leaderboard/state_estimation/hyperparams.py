@@ -42,6 +42,7 @@ SLAM_ABS_TILT_Z = False               # absolute SLAM z/tilt follows SLAM drift 
 SLAM_REL_SCALE_FLOOR = 0.01           # fraction of the displacement (scan-matching scale error)
 SLAM_REL_ROT_FLOOR_RAD = math.radians(0.1)
 
+RADAR_GATE_FLOOR_STD = 0.0
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
