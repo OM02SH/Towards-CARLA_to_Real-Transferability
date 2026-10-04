@@ -195,7 +195,9 @@ class CarlaGroundTruthExtractor:
     """
     def __init__(self, world: carla.World, ego_actor_id: int,
                  static_max_range: float = 50.0, actor_max_range: float = 50.0,
-                 min_points_for_visibility: int = 5, visibility_margin: float = 0.2):
+                 min_points_for_visibility: int = 5, visibility_margin: float = 0.2,
+                 include_mesh_props: bool = True):
+        self.include_mesh_props = include_mesh_props     # parked / placed cars are often static.prop.mesh actors
         self.world = world
         self.ego_actor_id = ego_actor_id
         self.static_max_range = static_max_range
@@ -220,6 +222,30 @@ class CarlaGroundTruthExtractor:
                 yaw_world=math.radians(bbox.rotation.yaw)))
         self.static_refs: List[StaticVehicleRef] = refs
 
+    @staticmethod
+    def _mesh_path(actor) -> str:
+        try:
+            return str(actor.attributes.get("mesh_path", "")).lower()
+        except Exception:
+            return ""
+
+    def _is_vehicle_prop(self, actor) -> bool:
+        """static.prop.mesh can be anything; keep the ones that are vehicles (mesh path, else car-like size)."""
+        mesh = self._mesh_path(actor)
+        if "vehicle" in mesh or "wheeled" in mesh or "/car/" in mesh:
+            return True
+        ext = actor.bounding_box.extent
+        length, width, height = 2 * ext.x, 2 * ext.y, 2 * ext.z
+        return 2.5 <= length <= 12.0 and 1.3 <= width <= 3.2 and 1.0 <= height <= 4.0
+
+    def _prop_tag(self, actor) -> str:
+        mesh = self._mesh_path(actor)
+        for keyword, tag in (("truck", "truck"), ("bus", "bus"), ("motor", "motorcycle"), ("bike", "bicycle"),
+                             ("bicycle", "bicycle")):
+            if keyword in mesh:
+                return tag
+        return "car"
+
     def _get_points_in_box(self, box: Box, lidar_points_ego: Optional[np.ndarray]) -> int:
         if lidar_points_ego is None:
             # no lidar available: do not fake invisibility, treat every box as visible
@@ -242,6 +268,8 @@ class CarlaGroundTruthExtractor:
         boxes = []
         all_actors = self.world.get_actors()
         candidates = list(all_actors.filter("vehicle.*")) + list(all_actors.filter("walker.pedestrian.*"))
+        if self.include_mesh_props:
+            candidates += list(all_actors.filter("static.prop.mesh"))
 
         def _tag_from_type_id(type_id: str) -> str:
             t = type_id.lower()
@@ -273,7 +301,13 @@ class CarlaGroundTruthExtractor:
             loc = actor.get_transform().location
             if np.linalg.norm([loc.x - ego_pos[0], loc.y - ego_pos[1]]) > self.actor_max_range:
                 continue
-            box = box_from_actor(actor, tag=_tag_from_type_id(actor.type_id))
+            if actor.type_id == "static.prop.mesh":
+                if not self._is_vehicle_prop(actor):
+                    continue
+                tag = self._prop_tag(actor)
+            else:
+                tag = _tag_from_type_id(actor.type_id)
+            box = box_from_actor(actor, tag=tag)
             box.frame_id = frame_id
 
             # occluded / sparse boxes are tagged, not deleted: they are never penalised as misses,
@@ -694,7 +728,13 @@ class OnlineEvaluator:
             if a.id == self.ego_actor_id:
                 continue
             loc = a.get_location()
-            actors.append((loc.x, loc.y, a.type_id))
+            label = a.type_id
+            if label == "static.prop.mesh":
+                try:
+                    label += "[" + "/".join(str(a.attributes.get("mesh_path", "")).split("/")[-2:]) + "]"
+                except Exception:
+                    pass
+            actors.append((loc.x, loc.y, label.replace(",", ";")))
         act_xy = np.asarray([(x, y) for x, y, _ in actors], dtype=float).reshape(-1, 2)
 
         c, s = math.cos(math.radians(ego_tf.rotation.yaw)), math.sin(math.radians(ego_tf.rotation.yaw))
