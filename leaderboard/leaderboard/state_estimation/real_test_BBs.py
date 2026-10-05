@@ -424,6 +424,7 @@ def diagnose_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List
     vel = {"static": [], "moving": []}
     ori = {"static": [], "moving": []}      # yaw error, non-pedestrians only
     by_source: Dict[str, List[tuple]] = {}  # (ATE, ASE, yaw diff, fold180, fold90)
+    rec_src: Dict[str, List[int]] = {}      # source -> [visible GT, visible hit, unseen GT, unseen hit]
 
     for fid in sorted(set(gt_frames) | set(pred_frames)):
         gt = _filter_range(gt_frames.get(fid, []), max_range)
@@ -433,12 +434,17 @@ def diagnose_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List
         unmatched_pred = set(un_pred)
         for gi, g in enumerate(gt):
             r = rng[bucket(g)]
+            rs = rec_src.setdefault(getattr(g, "source", "unknown"), [0, 0, 0, 0])
             if _is_visible(g):
                 r["vis"] += 1
                 r["hit_vis"] += int(gi in matched_gt)
+                rs[0] += 1
+                rs[1] += int(gi in matched_gt)
             else:
                 r["unseen"] += 1
                 r["hit_unseen"] += int(gi in matched_gt)
+                rs[2] += 1
+                rs[3] += int(gi in matched_gt)
         for pi, p in enumerate(pred):
             b = bucket(p)
             rng[b]["pred"] += 1
@@ -498,7 +504,7 @@ def diagnose_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List
     return {"thresh": thresh, "ranges": [(range_edges[i], range_edges[i + 1]) for i in range(nb)],
             "range_stats": rng, "score_edges": score_edges, "score_stats": sc, "fp_kind": fp_kind,
             "ghost_anatomy": ghost_anatomy, "ghost_rows": ghost_rows, "vel": vel, "ori": ori,
-            "by_source": by_source}
+            "by_source": by_source, "rec_src": rec_src}
 
 def print_diagnostics(d: dict) -> None:
     nan = float("nan")
@@ -572,12 +578,17 @@ def print_diagnostics(d: dict) -> None:
             print(f"  GT {kind:<8}{'':>26}{a.size:>5}{a.mean():>10.3f}{np.minimum(a, math.pi - a).mean():>17.3f}"
                   f"{100*np.mean(a > 2*math.pi/3):>15.1f}%")
 
+    if d["rec_src"]:
+        print("\nRecall by GT source                      visGT  rec(vis)  unseenGT  unseen-hit")
+        for src, (v, hv, u, hu) in sorted(d["rec_src"].items()):
+            print(f"  {src:<12}{'':>26}{v:>8}{(hv / v if v else float('nan')):>10.3f}{u:>10}{(hu / u if u else float('nan')):>12.3f}")
     if d["by_source"]:
-        print("\nErrors by GT source (matched pairs)      n     ATE     ASE  AOE raw  fold-180  fold-90  >57deg off")
+        print("\nErrors by GT source (matched pairs)      n     ATE     ASE  AOE raw  fold-180  fold-90  >57deg off  flipped>120")
         for src, vals in sorted(d["by_source"].items()):
             a = np.asarray(vals, dtype=float)
             print(f"  {src:<12}{'':>26}{len(a):>7}{a[:, 0].mean():>8.3f}{a[:, 1].mean():>8.3f}{a[:, 2].mean():>9.3f}"
-                  f"{a[:, 3].mean():>10.3f}{a[:, 4].mean():>9.3f}{100*np.mean(a[:, 3] > 1.0):>10.1f}%")
+                  f"{a[:, 3].mean():>10.3f}{a[:, 4].mean():>9.3f}{100*np.mean(a[:, 3] > 1.0):>10.1f}%"
+                  f"{100*np.mean(a[:, 2] > 2 * math.pi / 3):>12.1f}%")
         print("  (fold-90 small while fold-180 is large = boxes are rotated by 90 degrees, i.e. swapped length/width axes)")
 
     print("\nVelocity (matched pairs)")
@@ -793,8 +804,8 @@ class OnlineEvaluator:
         return evaluate_frames(self._gt_frames, self._pred_frames, self.thresholds, self.tp_threshold, self.max_range)
 
     def diagnose(self) -> dict:
-        return diagnose_frames(self._gt_frames, self._pred_frames, self._ego_speed, self.tp_threshold,
-                               self.max_range, ego_pose=self._ego_pose, ghost_ctx=self._ghost_ctx)
+        print(diagnose_frames(self._gt_frames, self._pred_frames, self._ego_speed, self.tp_threshold,
+                               self.max_range, ego_pose=self._ego_pose, ghost_ctx=self._ghost_ctx))
 
     def save_ghosts_csv(self, rows: list, path: "str | Path") -> None:
         with open(path, "w") as f:
