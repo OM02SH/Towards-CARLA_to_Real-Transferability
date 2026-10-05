@@ -21,7 +21,7 @@ import leaderboard.state_estimation.hyperparams as hp
 from pcdet.ops.roiaware_pool3d import roiaware_pool3d_utils
 
 DEBUG_PRINT = False
-FIX_FRAMES = True
+FIX_FRAMES = False
 
 def _rot_z(deg: float) -> np.ndarray:
     c, s = math.cos(math.radians(deg)), math.sin(math.radians(deg))
@@ -258,82 +258,11 @@ def time_to_road_departure(carla_map: carla.Map, ego: Ego3DState, dims: np.array
 
     return float('inf')
 
-
-"""def build_bbs(half_length, half_width, state: CalculatedState, master_cloud: np.ndarray,
-              radar_points, cameras, step, tracker: UKFBoundingBoxTracker,
-              detector: OpenPCDetDetector, lidar_offset: np.ndarray = None):
-    if lidar_offset is None:
-        lidar_offset = np.zeros(3)
-
-    obstacle_mask = (master_cloud[:, 0] > -hp.MAX_LOCKBACK) & (master_cloud[:, 0] < hp.MAX_LOOKFORWARD) & \
-                    (np.abs(master_cloud[:, 1]) < hp.MAX_LOOKSIDEWAYS) & (master_cloud[:, 2] > -hp.GROUND_CLEARANCE) & \
-                    ((np.abs(master_cloud[:, 0]) > half_length) | (np.abs(master_cloud[:, 1]) > half_width))
-    obstacle_pts = master_cloud[obstacle_mask]
-
-    if len(obstacle_pts) < hp.MIN_NUMBER_LIDAR_HITS:
-        moving_tracks = tracker.update([], step)
-        return [t.get_all_data() for t in moving_tracks], obstacle_pts
-
-    T = ego_to_world_matrix(state.ego_state)
-    R = T[:3, :3]
-    network_detections: list[bev_Det] = []
-    network_static: list[trackedbb] = []
-    for box in detector.infer(obstacle_pts, cameras):
-        _dbg("detected box:", box)
-        class_name = box["class_name"].strip().lower()
-        if class_name not in hp.OPENPCDET_DYNAMIC_CLASSES and class_name not in hp.OPENPCDET_STATIC_CLASSES:
-            continue
-
-        if FIX_FRAMES:
-            local = np.array([box["x"] + lidar_offset[0], -box["y"] + lidar_offset[1],
-                              box["z"] + lidar_offset[2], 1.0])
-            heading = -box["heading"]
-            vel_local = np.array([box["vx"], -box["vy"], 0.0])
-        else:
-            local = np.array([box["x"], box["y"], box["z"], 1.0])
-            heading = box["heading"]
-            vel_local = np.array([box["vx"], box["vy"], 0.0])
-
-        center_global = T @ local
-        heading_dir_global = R @ np.array([math.cos(heading), math.sin(heading), 0.0])
-        vel_global = R @ vel_local if FIX_FRAMES else vel_local
-
-        center_x, center_y, center_z = float(center_global[0]), float(center_global[1]), float(center_global[2])
-        yaw_deg = math.degrees(math.atan2(heading_dir_global[1], heading_dir_global[0]))
-        length, width, height = box["length"], box["width"], box["height"]
-        vx, vy = float(vel_global[0]), float(vel_global[1])
-        
-        if class_name in hp.OPENPCDET_DYNAMIC_CLASSES:
-            matched_radars = _match_radar_points(radar_points, center_x, center_y, center_z,
-                                                 length, width, height, yaw_deg)
-            _dbg(f"final data : center_x={center_x}, center_y={center_y}, length={length}, width={width}, vx={vx}, vy={vy}, yaw={yaw_deg}, step={step}, center_z={center_z}, height={height}, radar_points={len(matched_radars)}")
-            network_detections.append(bev_Det(
-                center_x=center_x, center_y=center_y, length=length, width=width, vx=vx, vy=vy,
-                yaw=yaw_deg, step=step, center_z=center_z, height=height, radar_points=matched_radars
-            ))
-        else:
-            network_static.append(trackedbb(
-                px=center_x, py=center_y, moveable=False,
-                vx=0.0, vy=0.0, speed=0.0, acceleration=0.0, ax=0.0, ay=0.0,
-                yaw=math.radians(yaw_deg), yaw_rate=0.0,
-                len=length, wid=max(width, 0.3),
-                z=center_z, height=height,
-                pos_history=[], slip_angle_deg=0.0
-            ))
-    #print("detections: ", len(network_detections))
-    moving_tracks = tracker.update(network_detections, step)
-    tracked: list[trackedbb] = [t.get_all_data() for t in moving_tracks]
-    tracked.extend(network_static)
-    print("tracked: ", len(tracked))
-    #print(tracked)
-    return tracked, obstacle_pts"""
-
 def run_detection(half_length, half_width, state: CalculatedState, master_cloud: np.ndarray,
                   radar_points, cameras, step, detector: OpenPCDetDetector, lidar_offset: np.ndarray = None):
     if lidar_offset is None:
         lidar_offset = np.zeros(3)
 
-    # mask in the EGO frame (master_cloud is in the lidar frame, y already flipped to right-handed)
     ex = master_cloud[:, 0] + lidar_offset[0]
     ey = -master_cloud[:, 1] + lidar_offset[1]
     ez = master_cloud[:, 2] + lidar_offset[2]
@@ -344,7 +273,7 @@ def run_detection(half_length, half_width, state: CalculatedState, master_cloud:
 
     if len(obstacle_pts) < hp.MIN_NUMBER_LIDAR_HITS:
         return [], [], obstacle_pts
-
+    v_ego_world = np.array([state.ego_state.vx_world, state.ego_state.vy_world])   # before the loop
     T = ego_to_world_matrix(state.ego_state)
     R = T[:3, :3]
     network_detections: list[bev_Det] = []
@@ -368,11 +297,12 @@ def run_detection(half_length, half_width, state: CalculatedState, master_cloud:
         center_global = T @ local
         heading_dir_global = R @ np.array([math.cos(heading), math.sin(heading), 0.0])
         vel_global = R @ vel_local if FIX_FRAMES else vel_local
-
+        vx = float(vel_global[0] + v_ego_world[0])  
+        vy = float(vel_global[1] + v_ego_world[1])
         center_x, center_y, center_z = float(center_global[0]), float(center_global[1]), float(center_global[2])
-        yaw_deg = -math.degrees(math.atan2(heading_dir_global[1], heading_dir_global[0]))
+        yaw_deg = math.degrees(math.atan2(heading_dir_global[1], heading_dir_global[0]))
         length, width, height = box["length"], box["width"], box["height"]
-        vx, vy = float(vel_global[0]), float(vel_global[1])
+        #vx, vy = float(vel_global[0]), float(vel_global[1])
 
         if class_name in hp.OPENPCDET_DYNAMIC_CLASSES:
             matched_radars = _match_radar_points(radar_points, center_x, center_y, center_z,

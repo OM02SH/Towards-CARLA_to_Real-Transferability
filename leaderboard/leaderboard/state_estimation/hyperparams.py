@@ -5,7 +5,7 @@ import math
 import carla
 
 RADAR_GATE_FLOOR_STD = 2.0
-DET_VELOCITY_MEAS_STD = 3.0
+DET_VELOCITY_MEAS_STD = 1.0
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))  
  
@@ -20,7 +20,7 @@ SIGMA_GNSS_Z = 0.25
 SIGMA_COMPASS = math.radians(5.0)
 SIGMA_WHEEL_LONG = 0.08          
 SIGMA_WHEEL_LAT = 0.10   
-SIGMA_GRAVITY_DIRECTION = 0.1
+SIGMA_GRAVITY_DIRECTION = 0.5
 SIGMA_GNSS_VEL = 1.5
  
 SIGMA_GYRO = math.radians(0.5)
