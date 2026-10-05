@@ -120,20 +120,21 @@ class CarlaStateEstimatorEngine:
     def compute(self, dt: float, vehicle: carla.Vehicle, sensors_data: dict, step):
         imu_data = sensors_data["imu"]
         gnss_data = sensors_data["gnss"]
-        lidar_data = sensors_data["lidar"]
+        lidar_data_bbs = sensors_data["lidar_bbs"]
+        lidar_data_slam = sensors_data["lidar_slam"]
         radar_datas = sensors_data["radars"]
         cameras = sensors_data["stacked_cameras"]
         frame = sensors_data["yolo_camera"]
         if (imu_data == None):
             raise ValueError("Sensor data IMU must be provided for computation.")
-        lidar_np = np.frombuffer(lidar_data.raw_data, dtype=np.float32).reshape(-1, 4).copy()
+        lidar_np = np.frombuffer(lidar_data_bbs.raw_data, dtype=np.float32).reshape(-1, 4).copy()
         state = CalculatedState()
         perp_state = CalculatedState()
         self.speed_limit = vehicle.get_speed_limit()
         rec = SensorRecorder(self.geo_ref)
         wheel = EgoErrorStateEKF3D.get_simulated_speedometer(vehicle)   
-        state.ego_state = self.ekf.compute(dt, vehicle, imu_data, gnss_data, lidar_data, step, wheel_speed=wheel, )
-        rec.add(step, dt, imu_data, gnss_data, lidar_data is not None, wheel, vehicle)
+        state.ego_state = self.ekf.compute(dt, vehicle, imu_data, gnss_data, lidar_data_slam, step, wheel_speed=wheel, )
+        rec.add(step, dt, imu_data, gnss_data, lidar_data_slam is not None, wheel, vehicle)
         rec.save(f"ekf_routes/route_{step}.npz", self.ekf) 
         if step > 50: self.ego_evaluator.add_frame(frame_id=str(step),ego_state=self.state.ego_state)
         if (step+1) % 100 == 0: 
@@ -190,7 +191,7 @@ class CarlaStateEstimatorEngine:
         self.state = state
         type(self)._last_state = state    
         
-        pts_sensor = np.frombuffer(lidar_data.raw_data, dtype=np.float32).reshape(-1, 4).copy()
+        pts_sensor = np.frombuffer(lidar_data_slam.raw_data, dtype=np.float32).reshape(-1, 4).copy()
         ranges = np.linalg.norm(pts_sensor[:, :3], axis=1)
         pts_sensor = pts_sensor[ranges>hp.MIN_VALID_RANGE_M]
         if step > 50:   

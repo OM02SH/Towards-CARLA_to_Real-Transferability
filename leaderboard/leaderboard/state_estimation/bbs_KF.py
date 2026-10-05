@@ -22,7 +22,6 @@ from pcdet.ops.roiaware_pool3d import roiaware_pool3d_utils
 
 DEBUG_PRINT = False
 FIX_FRAMES = True
-SYNC_DETECTOR = False   # True = main loop waits for the detector each step (measures perception without latency)
 
 def _rot_z(deg: float) -> np.ndarray:
     c, s = math.cos(math.radians(deg)), math.sin(math.radians(deg))
@@ -575,13 +574,9 @@ class BBsWorker(threading.Thread):
                 self.input_queue.get_nowait()
             except queue.Empty:
                 pass
-        if SYNC_DETECTOR:
-            self._done.clear()
         self.input_queue.put((state, lidar_np, radar_arrays, cameras, step))
 
     def get_latest_result(self) -> Optional[Tuple[list[trackedbb], np.ndarray, float, np.ndarray]]:
-        if SYNC_DETECTOR:
-            self._done.wait(timeout=30.0)
         while True:                                   # detections -> UKF updates, in capture order
             try:
                 det_step, dets, statics, pts = self.output_queue.get_nowait()

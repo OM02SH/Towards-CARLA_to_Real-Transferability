@@ -102,7 +102,27 @@ class VehicleSensorSuite:
         lidar_bp.set_attribute("upper_fov", "10.0")
         lidar_bp.set_attribute("lower_fov", "-30.0")
 
-        sensor_name = f"lidar"
+        sensor_name = f"lidar_slam"
+        
+        sensor = self.world.spawn_actor(lidar_bp, self.lidar_pos,
+             attach_to=self.vehicle, attachment_type=carla.AttachmentType.Rigid)
+        
+        q = queue.Queue()
+        sensor.listen(q.put)
+        
+        self.sensors[sensor_name] = sensor
+        self.data_queues[sensor_name] = q
+        self.mount_transforms[sensor_name] = self.lidar_pos  
+        
+        lidar_bp = self.bp_lib.find("sensor.lidar.ray_cast")
+        lidar_bp.set_attribute("range", "80.0")
+        lidar_bp.set_attribute("channels", "32")
+        lidar_bp.set_attribute("points_per_second", "250000")
+        lidar_bp.set_attribute("rotation_frequency", "10")
+        lidar_bp.set_attribute("upper_fov", "10.0")
+        lidar_bp.set_attribute("lower_fov", "-30.0")
+
+        sensor_name = f"lidar_bbs"
         
         sensor = self.world.spawn_actor(lidar_bp, self.lidar_pos,
              attach_to=self.vehicle, attachment_type=carla.AttachmentType.Rigid)
@@ -222,7 +242,8 @@ class SensorDataParser:
 
     def process_all_sensors(self, raw_data_dict: dict) -> dict:
         processed_data = {
-            "lidar": None,
+            "lidar_bbs": None,
+            "lidar_slam": None,
             "cameras": {},
             "yolo_cameras": None,
             "radars": {},
@@ -233,8 +254,10 @@ class SensorDataParser:
         for name, raw_measurement in raw_data_dict.items():
             if raw_measurement is None:
                 continue
-            elif name.startswith("lidar"):
-                processed_data["lidar"] = raw_measurement
+            elif name == "lidar_bbs":
+                processed_data["lidar_bbs"] = raw_measurement
+            elif name == "lidar_slam":
+                processed_data["lidar_slam"] = raw_measurement
             elif name.startswith("cam_"):
                 img_bgra = np.frombuffer(raw_measurement.raw_data, dtype=np.uint8)
                 img_bgra = img_bgra.reshape((raw_measurement.height, raw_measurement.width, 4))
