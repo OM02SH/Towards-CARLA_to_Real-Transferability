@@ -197,7 +197,7 @@ class CarlaStateEstimatorEngine:
             self.bbs_evaluator.add_frame(frame_id=str(step), pts_sensor=pts_sensor,
                 track_bbs=[b for b in state.detected_objects if b.moveable], ego_state=gt_ego_state)
         if (step+1) % 100 == 0: self.bbs_evaluator.print_report()
-        if (step+1) % 1000 == 0: self.bbs_evaluator.diagnose()
+        #if (step+1) % 1000 == 0: self.bbs_evaluator.diagnose()
 
     @staticmethod
     def get_calculated_state() -> CalculatedState:
