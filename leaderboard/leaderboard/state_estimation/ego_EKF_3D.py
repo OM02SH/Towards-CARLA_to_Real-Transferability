@@ -480,7 +480,7 @@ class EgoErrorStateEKF3D:
         T[0:3, 3] = self.p
         return T
 
-    def update_slam(self, lidar_data, step, dynamic_boxes=None) -> None:
+    def update_slam(self, lidar_data, step) -> None:
         if lidar_data is not None:
             self._frame_pose[step] = self._ekf_pose()
             self._frame_time[step] = self.t
@@ -489,7 +489,7 @@ class EgoErrorStateEKF3D:
                 self._frame_pose.pop(old)
                 self._frame_time.pop(old, None)
             if not self.stationary:                 
-                self.slam.push_frame(lidar_data, self._frame_pose[step], step, dynamic_boxes)
+                self.slam.push_frame(lidar_data, self._frame_pose[step], step)
 
         res = self.slam.get_latest_result()
         if res is None: return
@@ -653,8 +653,7 @@ class EgoErrorStateEKF3D:
         self.prev_state = state
         return state
 
-    def compute(self, dt: float, vehicle, imu_data, gnss_data, lidar_data, step,
-                wheel_speed=UNSET, dynamic_boxes=None) -> Ego3DState:
+    def compute(self, dt: float, vehicle, imu_data, gnss_data, lidar_data, step, wheel_speed=UNSET) -> Ego3DState:
         self.t += dt
         self.dt = dt
         accel_raw, gyro_raw = self.carla_imu_to_body(imu_data)
@@ -683,7 +682,7 @@ class EgoErrorStateEKF3D:
         self.update_gravity(accel_body)
 
         self.history.append((self.t, quat_to_R(self.q), self.v_world.copy(), self.gyro.copy(), dt))
-        self.update_slam(lidar_data, step, dynamic_boxes)
+        self.update_slam(lidar_data, step)
         return self.extract_state_from_filter()
 
     def nis_summary(self) -> dict:
