@@ -804,8 +804,8 @@ class OnlineEvaluator:
         return evaluate_frames(self._gt_frames, self._pred_frames, self.thresholds, self.tp_threshold, self.max_range)
 
     def diagnose(self) -> dict:
-        print(diagnose_frames(self._gt_frames, self._pred_frames, self._ego_speed, self.tp_threshold,
-                               self.max_range, ego_pose=self._ego_pose, ghost_ctx=self._ghost_ctx))
+        return diagnose_frames(self._gt_frames, self._pred_frames, self._ego_speed, self.tp_threshold,
+                               self.max_range, ego_pose=self._ego_pose, ghost_ctx=self._ghost_ctx)
 
     def save_ghosts_csv(self, rows: list, path: "str | Path") -> None:
         with open(path, "w") as f:
