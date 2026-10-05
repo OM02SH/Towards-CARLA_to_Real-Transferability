@@ -121,9 +121,9 @@ class EgoErrorStateEKF3D:
         self.ba = np.zeros(3)
         self.wheel_scale = 0.0
 
-        gx, gy, gz = hp.GNSS_POS_CARLA
+        gx, gy, gz = 0,0,0
         self.l_gnss = np.array([gx, -gy, gz], dtype=float)
-        self.R_lidar, self.t_lidar = carla_mount_to_flu(hp.LIDAR_POS_CARLA, hp.LIDAR_RPY_DEG_CARLA)
+        self.R_lidar, self.t_lidar = carla_mount_to_flu((0,0,vehicle.bounding_box.extent.z + 0.3), (0,0,0))
 
         T0 = np.eye(4)
         T0[0:3, 0:3] = quat_to_R(q0)

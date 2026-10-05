@@ -7,11 +7,7 @@ import carla
 RADAR_GATE_FLOOR_STD = 2.0
 DET_VELOCITY_MEAS_STD = 3.0
 
-_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-
-GNSS_POS_CARLA = (0.0, 0.0, 0.0)
-LIDAR_POS_CARLA = (0.0, 0.0, 0.0)
-LIDAR_RPY_DEG_CARLA = (0.0, 0.0, 0.0)     
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))  
  
 # ============================================================================
 # EGO STATE

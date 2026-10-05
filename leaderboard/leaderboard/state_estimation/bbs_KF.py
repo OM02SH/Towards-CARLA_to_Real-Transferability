@@ -371,7 +371,7 @@ def run_detection(half_length, half_width, state: CalculatedState, master_cloud:
         vel_global = R @ vel_local if FIX_FRAMES else vel_local
 
         center_x, center_y, center_z = float(center_global[0]), float(center_global[1]), float(center_global[2])
-        yaw_deg = math.degrees(math.atan2(heading_dir_global[1], heading_dir_global[0]))
+        yaw_deg = -math.degrees(math.atan2(heading_dir_global[1], heading_dir_global[0]))
         length, width, height = box["length"], box["width"], box["height"]
         vx, vy = float(vel_global[0]), float(vel_global[1])
 
@@ -413,23 +413,11 @@ def process_radar(state: CalculatedState, radar_arr: np.ndarray, sensor_transfor
 
     r, az, alt, v_r = (radar_arr[:, i].astype(np.float64) for i in range(4))
     cos_alt = np.cos(alt)
-    u_sensor = np.stack([cos_alt * np.cos(az), cos_alt * np.sin(az), np.sin(alt)], axis=1)   # (M, 3)
-    p_sensor = np.hstack([u_sensor * r[:, None], np.ones((len(r), 1))])                       # (M, 4)
+    u_sensor = np.stack([cos_alt * np.cos(az), cos_alt * np.sin(az), np.sin(alt)], axis=1)   
+    p_sensor = np.hstack([u_sensor * r[:, None], np.ones((len(r), 1))])                       
     p_world = (T_sensor_to_world @ p_sensor.T).T[:, :3]
     u_world = u_sensor @ R_sensor_to_world.T
     v_r_abs = v_r + u_world @ v_ego_world
-    DEBUG_RADAR_SIGN = True       # module level
-    _RADAR_STATS = [0, 0, 0]       # module level
-
-    if DEBUG_RADAR_SIGN and np.linalg.norm(v_ego_world) > 3.0:
-        a = v_r + u_world @ v_ego_world          # your current formula
-        b = -v_r + u_world @ v_ego_world         # 'towards the sensor' formula
-        _RADAR_STATS[0] += int(np.sum(np.abs(a) < 0.5))
-        _RADAR_STATS[1] += int(np.sum(np.abs(b) < 0.5))
-        _RADAR_STATS[2] += len(v_r)
-        if _RADAR_STATS[2] > 20000:
-            print(f"radar sign test: current {_RADAR_STATS[0]/_RADAR_STATS[2]:.2f}  flipped {_RADAR_STATS[1]/_RADAR_STATS[2]:.2f}")
-            _RADAR_STATS[:] = [0, 0, 0]
     return np.column_stack([p_world, v_r_abs, u_world]).astype(np.float32)
 
 def detect_from_sensors(state: CalculatedState, lidar_stream, radar_streams, cameras, step,
@@ -444,7 +432,7 @@ def detect_from_sensors(state: CalculatedState, lidar_stream, radar_streams, cam
     pts_sensor = np.asarray(lidar_stream, dtype=np.float32).reshape(-1, 4)
     ranges = np.linalg.norm(pts_sensor[:, :3], axis=1)
     pts_sensor = pts_sensor[ranges > hp.MIN_VALID_RANGE_M]
-    pts_sensor[:, 1] = -pts_sensor[:, 1]          # CARLA (left-handed) -> right-handed, y left
+    pts_sensor[:, 1] = -pts_sensor[:, 1]         
 
     return run_detection(half_length, half_width, state, pts_sensor, radar_points, cameras, step,
                          detector, lidar_offset)
@@ -559,12 +547,7 @@ class BBsWorker(threading.Thread):
     def __init__(self, lidar_transform, radar_transforms, half_length, half_width, half_height: float = hp.DEFAULT_EGO_HALF_HEIGHT):
         super().__init__()
         self.tracker = UKFBoundingBoxTracker()
-        try:
-            self.detector = OpenPCDetDetector()
-        except Exception as exc:
-            traceback.print_exc()
-            sys.stderr.flush()
-            raise RuntimeError(f"OpenPCDetDetector unavailable: {exc}") from exc
+        self.detector = OpenPCDetDetector()
         self.input_queue = queue.Queue(maxsize=1)
         self.output_queue = queue.Queue()
         self.running = True
