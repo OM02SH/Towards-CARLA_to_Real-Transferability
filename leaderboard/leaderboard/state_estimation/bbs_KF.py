@@ -273,7 +273,7 @@ def run_detection(half_length, half_width, state: CalculatedState, master_cloud:
 
     if len(obstacle_pts) < hp.MIN_NUMBER_LIDAR_HITS:
         return [], [], obstacle_pts
-    v_ego_world = np.array([state.ego_state.vx_world, state.ego_state.vy_world])   # before the loop
+
     T = ego_to_world_matrix(state.ego_state)
     R = T[:3, :3]
     network_detections: list[bev_Det] = []
@@ -297,12 +297,11 @@ def run_detection(half_length, half_width, state: CalculatedState, master_cloud:
         center_global = T @ local
         heading_dir_global = R @ np.array([math.cos(heading), math.sin(heading), 0.0])
         vel_global = R @ vel_local if FIX_FRAMES else vel_local
-        vx = float(vel_global[0] + v_ego_world[0])  
-        vy = float(vel_global[1] + v_ego_world[1])
+
         center_x, center_y, center_z = float(center_global[0]), float(center_global[1]), float(center_global[2])
         yaw_deg = math.degrees(math.atan2(heading_dir_global[1], heading_dir_global[0]))
         length, width, height = box["length"], box["width"], box["height"]
-        #vx, vy = float(vel_global[0]), float(vel_global[1])
+        vx, vy = float(vel_global[0]), float(vel_global[1])
 
         if class_name in hp.OPENPCDET_DYNAMIC_CLASSES:
             matched_radars = _match_radar_points(radar_points, center_x, center_y, center_z,

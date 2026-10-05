@@ -4,8 +4,8 @@ import numpy as np
 import math
 import carla
 
-RADAR_GATE_FLOOR_STD = 2.0
-DET_VELOCITY_MEAS_STD = 1.0
+RADAR_GATE_FLOOR_STD = 1.5
+DET_VELOCITY_MEAS_STD = 3.0
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))  
  
@@ -20,7 +20,7 @@ SIGMA_GNSS_Z = 0.25
 SIGMA_COMPASS = math.radians(5.0)
 SIGMA_WHEEL_LONG = 0.08          
 SIGMA_WHEEL_LAT = 0.10   
-SIGMA_GRAVITY_DIRECTION = 0.5
+SIGMA_GRAVITY_DIRECTION = 0.1
 SIGMA_GNSS_VEL = 1.5
  
 SIGMA_GYRO = math.radians(0.5)
@@ -40,7 +40,7 @@ GYRO_CLIP_RAD = math.radians(100.0)
 ACCEL_SPIKE_THRESH = 8.0         
 GYRO_SPIKE_THRESH = 1.0          
  
-USE_ZUPT = False
+USE_ZUPT = True
 ZUPT_WINDOW = 10                 
 ZUPT_ACCEL_VAR = 0.05            
 ZUPT_GYRO_MAX = 0.03             
@@ -200,7 +200,7 @@ extrinsics = np.array([
 
 POSITION_STD = 1
 YAW_STD = math.radians(10.0)
-ACCEL_STD = 4.0
+ACCEL_STD = 2.0
 YAW_RATE_STD = math.radians(20.0)
 L_STD = 0.1
 W_STD = 0.1
