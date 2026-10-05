@@ -176,7 +176,7 @@ class ScenarioManager(object):
         self.sensor_suite = VehicleSensorSuite(self.world, self.ego_vehicles[0])
         self.parser = SensorDataParser()
         radar_transforms = {name: t for name, t in self.sensor_suite.mount_transforms.items() if "radar" in name}
-        self.state_from_sensors = CarlaStateEstimatorEngine(self.ego_vehicles[0], self.world, map, self.sensor_suite.mount_transforms["lidar"], radar_transforms)
+        self.state_from_sensors = CarlaStateEstimatorEngine(self.ego_vehicles[0], self.world, map, self.sensor_suite.mount_transforms["lidar_slam"], radar_transforms)
         #QAG = OnlineCarlaQAGenerator(world,map.name, self.scenario.ego_vehicles[0].id, map.name)
 
         while self._running:
