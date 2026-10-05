@@ -41,6 +41,7 @@ def _stats(err) -> dict:
             "mae": float(a.mean()), "median_abs": float(np.median(a)),
             "rmse": float(np.sqrt((err ** 2).mean())),
             "p95_abs": float(np.percentile(a, 95)), "max_abs": float(a.max())}
+
 def ego_state_from_vehicle(vehicle: carla.Vehicle) -> Ego3DState:
     tf = vehicle.get_transform()
     R_wb = np.asarray(tf.get_inverse_matrix(), dtype=float)[:3, :3]   # world -> body rotation

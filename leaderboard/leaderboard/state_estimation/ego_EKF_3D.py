@@ -130,7 +130,7 @@ class EgoErrorStateEKF3D:
         T0[0:3, 3] = self.p
         if slam_worker is None:
             engine = CarlaPoseGraphSLAM(T0, extrinsic_R=self.R_lidar, extrinsic_t=self.t_lidar)
-            slam_worker = AsyncSlamWorker(engine, synchronous=hp.SLAM_SYNCHRONOUS)
+            slam_worker = AsyncSlamWorker(engine)
             slam_worker.start()
         self.slam = slam_worker
         self.slam_log = []                 
@@ -257,8 +257,7 @@ class EgoErrorStateEKF3D:
         G_reset[6:9, 6:9] = np.eye(3) - 0.5 * skew(dtheta)
         self.P = G_reset @ self.P @ G_reset.T
 
-    def update_error_state(self, z, z_pred, H, R, residual_fn=None, sensor_name: str = "unknown",
-                           gate: str = "soft") -> bool:
+    def update_error_state(self, z, z_pred, H, R, sensor_name, gate, residual_fn=None) -> bool:
         z = np.atleast_1d(np.asarray(z, dtype=float))
         innovation = (z - np.atleast_1d(z_pred)) if residual_fn is None else np.atleast_1d(residual_fn(z, z_pred))
         dof = innovation.size

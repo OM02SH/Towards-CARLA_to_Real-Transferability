@@ -196,7 +196,8 @@ class CarlaGroundTruthExtractor:
     def __init__(self, world: carla.World, ego_actor_id: int,
                  static_max_range: float = 50.0, actor_max_range: float = 50.0,
                  min_points_for_visibility: int = 5, visibility_margin: float = 0.2,
-                 include_mesh_props: bool = True):
+                 include_mesh_props: bool = True, canonical_props: bool = True):
+        self.canonical_props = canonical_props           # swap length/width (and yaw +90) when a prop's long side is local y
         self.include_mesh_props = include_mesh_props     # parked / placed cars are often static.prop.mesh actors
         self.world = world
         self.ego_actor_id = ego_actor_id
@@ -279,13 +280,17 @@ class CarlaGroundTruthExtractor:
             if t.startswith("vehicle."): return "car"
             return t
 
-        def box_from_actor(actor: carla.Actor, tag: str = "") -> Box:
+        def box_from_actor(actor: carla.Actor, tag: str = "", canonical: bool = False) -> Box:
             actor_transform = actor.get_transform()
             bbox = actor.bounding_box
             center_world = local_to_world(actor_transform, bbox.location)
             center_local = world_to_local(ego_transform, center_world)
             size = np.array([2.0 * bbox.extent.x, 2.0 * bbox.extent.y, 2.0 * bbox.extent.z])
             yaw_world = math.radians(actor_transform.rotation.yaw + bbox.rotation.yaw)
+            if canonical and size[1] > size[0]:
+                # prop meshes can have their long axis on local y: make x the length, like a vehicle bounding box
+                size[0], size[1] = size[1], size[0]
+                yaw_world += math.pi / 2.0
             ego_yaw = math.radians(ego_transform.rotation.yaw)
             yaw_local = wrap_angle_rad(yaw_world - ego_yaw)
             vel_world = actor.get_velocity()
@@ -301,13 +306,15 @@ class CarlaGroundTruthExtractor:
             loc = actor.get_transform().location
             if np.linalg.norm([loc.x - ego_pos[0], loc.y - ego_pos[1]]) > self.actor_max_range:
                 continue
-            if actor.type_id == "static.prop.mesh":
+            is_prop = actor.type_id == "static.prop.mesh"
+            if is_prop:
                 if not self._is_vehicle_prop(actor):
                     continue
                 tag = self._prop_tag(actor)
             else:
                 tag = _tag_from_type_id(actor.type_id)
-            box = box_from_actor(actor, tag=tag)
+            box = box_from_actor(actor, tag=tag, canonical=is_prop and self.canonical_props)
+            setattr(box, 'source', 'prop' if is_prop else ('pedestrian' if actor.type_id.startswith("walker.") else 'vehicle'))
             box.frame_id = frame_id
 
             # occluded / sparse boxes are tagged, not deleted: they are never penalised as misses,
@@ -334,6 +341,7 @@ class CarlaGroundTruthExtractor:
         boxes = []
         for r in nearby:
             box = _box_from_static_ref(r, ego_transform, frame_id=frame_id)
+            setattr(box, 'source', 'env')
             is_visible = self._get_points_in_box(box, lidar_points_ego) >= self.min_points_for_visibility
             setattr(box, 'visible', is_visible)
             boxes.append(box)
@@ -415,6 +423,7 @@ def diagnose_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List
     # matched pairs: (vel_err, pred_speed, ego_speed, gt_speed, angle_deg, is_pedestrian, pvx, pvy, gvx, gvy, det_speed, n_radar)
     vel = {"static": [], "moving": []}
     ori = {"static": [], "moving": []}      # yaw error, non-pedestrians only
+    by_source: Dict[str, List[tuple]] = {}  # (ATE, ASE, yaw diff, fold180, fold90)
 
     for fid in sorted(set(gt_frames) | set(pred_frames)):
         gt = _filter_range(gt_frames.get(fid, []), max_range)
@@ -481,10 +490,15 @@ def diagnose_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List
                               float(getattr(p, "det_speed", float("nan"))), float(getattr(p, "n_radar", float("nan")))))
             if g.tag != "pedestrian":
                 ori[kind].append(yaw_diff(g, p))
+            yd = yaw_diff(g, p)
+            m90 = yd % (math.pi / 2)
+            by_source.setdefault(getattr(g, "source", "unknown"), []).append(
+                (center_distance(g, p), 1.0 - scale_iou(g, p), yd, min(yd, math.pi - yd), min(m90, math.pi / 2 - m90)))
 
     return {"thresh": thresh, "ranges": [(range_edges[i], range_edges[i + 1]) for i in range(nb)],
             "range_stats": rng, "score_edges": score_edges, "score_stats": sc, "fp_kind": fp_kind,
-            "ghost_anatomy": ghost_anatomy, "ghost_rows": ghost_rows, "vel": vel, "ori": ori}
+            "ghost_anatomy": ghost_anatomy, "ghost_rows": ghost_rows, "vel": vel, "ori": ori,
+            "by_source": by_source}
 
 def print_diagnostics(d: dict) -> None:
     nan = float("nan")
@@ -557,6 +571,14 @@ def print_diagnostics(d: dict) -> None:
         if a.size:
             print(f"  GT {kind:<8}{'':>26}{a.size:>5}{a.mean():>10.3f}{np.minimum(a, math.pi - a).mean():>17.3f}"
                   f"{100*np.mean(a > 2*math.pi/3):>15.1f}%")
+
+    if d["by_source"]:
+        print("\nErrors by GT source (matched pairs)      n     ATE     ASE  AOE raw  fold-180  fold-90  >57deg off")
+        for src, vals in sorted(d["by_source"].items()):
+            a = np.asarray(vals, dtype=float)
+            print(f"  {src:<12}{'':>26}{len(a):>7}{a[:, 0].mean():>8.3f}{a[:, 1].mean():>8.3f}{a[:, 2].mean():>9.3f}"
+                  f"{a[:, 3].mean():>10.3f}{a[:, 4].mean():>9.3f}{100*np.mean(a[:, 3] > 1.0):>10.1f}%")
+        print("  (fold-90 small while fold-180 is large = boxes are rotated by 90 degrees, i.e. swapped length/width axes)")
 
     print("\nVelocity (matched pairs)")
     a = np.asarray(d["vel"]["static"], dtype=float).reshape(-1, 12)

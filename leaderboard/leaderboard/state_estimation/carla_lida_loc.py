@@ -41,12 +41,6 @@ class CarlaPoseGraphSLAM:
     def __init__(self, initial_transform: np.ndarray, voxel_size: float = 0.5,
                  normal_radius: float = 2.0, normal_max_nn: int = 30,
                  extrinsic_R: Optional[np.ndarray] = None, extrinsic_t: Optional[np.ndarray] = None):
-        """
-        initial_transform : 4x4 *vehicle* pose at start (EKF frame).
-        extrinsic_R/t     : LiDAR pose in the vehicle frame (FLU, right-handed). Points are moved
-                            into the vehicle frame BEFORE ICP, so every pose this class produces
-                            is the pose of the vehicle origin (no lever-arm error).
-        """
         self.initial_transform = initial_transform.astype(float)
         self.voxel_size = voxel_size
         self._normal_params = o3d.geometry.KDTreeSearchParamHybrid(radius=normal_radius, max_nn=normal_max_nn)
@@ -65,12 +59,8 @@ class CarlaPoseGraphSLAM:
         self._submap: Optional[o3d.geometry.PointCloud] = None
 
         reg = o3d.pipelines.registration
-        self._use_gicp = False
         self._estimator = reg.TransformationEstimationPointToPlane()
-        if hp.USE_GICP and hasattr(reg, "TransformationEstimationForGeneralizedICP"):
-            self._estimator = reg.TransformationEstimationForGeneralizedICP()
-            self._use_gicp = True
-        elif hp.USE_ROBUST_KERNEL and hasattr(reg, "TukeyLoss"):
+        if hasattr(reg, "TukeyLoss"):
             self._estimator = reg.TransformationEstimationPointToPlane(reg.TukeyLoss(k=hp.ICP_ROBUST_K))
 
     @staticmethod
@@ -81,41 +71,18 @@ class CarlaPoseGraphSLAM:
         xyz[:, 1] = -xyz[:, 1]  # CARLA LH -> EKF FLU RH
         return xyz
 
-    @staticmethod
-    def mask_boxes(xyz: np.ndarray, boxes: np.ndarray, margin: float) -> np.ndarray:
-        """Remove points inside oriented boxes. boxes: (N,7) [cx,cy,cz,l,w,h,yaw] in the
-        vehicle FLU frame (yaw CCW about z). Returns the kept points."""
-        if boxes is None or len(boxes) == 0 or len(xyz) == 0:
-            return xyz
-        keep = np.ones(len(xyz), dtype=bool)
-        for cx, cy, cz, l, w, h, yaw in np.asarray(boxes, float):
-            d = xyz - np.array([cx, cy, cz])
-            c, s = np.cos(yaw), np.sin(yaw)
-            lx = c * d[:, 0] + s * d[:, 1]
-            ly = -s * d[:, 0] + c * d[:, 1]
-            inside = ((np.abs(lx) <= l / 2 + margin) & (np.abs(ly) <= w / 2 + margin)
-                      & (np.abs(d[:, 2]) <= h / 2 + margin))
-            keep &= ~inside
-        return xyz[keep]
-
-    def _filter_static(self, xyz_sensor: np.ndarray, boxes: Optional[np.ndarray]) -> np.ndarray:
-        r = np.linalg.norm(xyz_sensor, axis=1)                     # range gates in the *sensor* frame
+    def _filter_static(self, xyz_sensor: np.ndarray) -> np.ndarray:
+        r = np.linalg.norm(xyz_sensor, axis=1)                     
         xyz = xyz_sensor[(r > hp.SELF_HIT_RANGE) & (r < hp.MAX_SENSOR_RANGE)]
-        xyz = xyz @ self.R_ext.T + self.t_ext                      # -> vehicle frame
-        return self.mask_boxes(xyz, boxes, hp.DYNAMIC_BOX_MARGIN)  # drop dynamic objects
+        return xyz @ self.R_ext.T + self.t_ext
 
     def _prepare(self, pcd):
         pcd.estimate_normals(search_param=self._normal_params)
-        if self._use_gicp:
-            try:
-                pcd.estimate_covariances(self._normal_params)
-            except Exception:
-                self._use_gicp = False
-                self._estimator = o3d.pipelines.registration.TransformationEstimationPointToPlane()
+        self._estimator = o3d.pipelines.registration.TransformationEstimationPointToPlane()
         return pcd
 
-    def _make_pcd(self, lidar_data, dynamic_boxes=None) -> Optional[o3d.geometry.PointCloud]:
-        xyz = self._filter_static(self._parse_raw_lidar(lidar_data), dynamic_boxes)
+    def _make_pcd(self, lidar_data) -> Optional[o3d.geometry.PointCloud]:
+        xyz = self._filter_static(self._parse_raw_lidar(lidar_data))
         if xyz.shape[0] < 50:
             return None
         pcd = o3d.geometry.PointCloud()
@@ -151,7 +118,7 @@ class CarlaPoseGraphSLAM:
             closed_any = True
         return closed_any
 
-    def _rebuild_submap(self) -> None:
+    def _rebuild_submap(self):
         """Merge the last N keyframes into the frame of the newest keyframe (scan-to-submap)."""
         j = len(self.keyframes) - 1
         Pj_inv = np.linalg.inv(self.pose_graph.nodes[j].pose)
@@ -214,9 +181,8 @@ class CarlaPoseGraphSLAM:
         x, y, z, w = Rotation.from_matrix(pose[0:3, 0:3]).as_quat()
         return p, np.array([w, x, y, z], dtype=float)
 
-    def process_lidar(self, lidar_data, predicted_pose: Optional[np.ndarray] = None,
-                      dynamic_boxes: Optional[np.ndarray] = None) -> SlamUpdateResult:
-        current_pcd = self._make_pcd(lidar_data, dynamic_boxes)
+    def process_lidar(self, lidar_data, predicted_pose: Optional[np.ndarray] = None) -> SlamUpdateResult:
+        current_pcd = self._make_pcd(lidar_data)
         if current_pcd is None:
             return SlamUpdateResult(success=False, reason="too few points after filtering")
 
@@ -254,31 +220,16 @@ class CarlaPoseGraphSLAM:
 
 
 class AsyncSlamWorker(threading.Thread):
-    """
-    synchronous=True : process inside push_frame() -> deterministic, zero latency (use for evaluation).
-    synchronous=False: background thread (real-time). Results carry the frame_id they belong to,
-                       so the EKF can handle the latency correctly either way.
-    """
-
-    def __init__(self, slam_engine: CarlaPoseGraphSLAM, synchronous: bool = False):
+    def __init__(self, slam_engine: CarlaPoseGraphSLAM):
         super().__init__()
         self.slam = slam_engine
-        self.synchronous = synchronous
         self.input_queue = queue.Queue(maxsize=1)
         self.output_queue = queue.Queue()
         self.running = True
         self.daemon = True
 
-    def start(self):
-        if not self.synchronous:
-            super().start()
-
-    def push_frame(self, lidar_data, predicted_pose: np.ndarray, frame_id: int = 0,
-                   dynamic_boxes: Optional[np.ndarray] = None):
-        item = (lidar_data, predicted_pose, frame_id, dynamic_boxes)
-        if self.synchronous:
-            self._process(item)
-            return
+    def push_frame(self, lidar_data, predicted_pose: np.ndarray, frame_id: int = 0):
+        item = (lidar_data, predicted_pose, frame_id)
         if self.input_queue.full():
             try:
                 self.input_queue.get_nowait()          # drop stale frame
@@ -296,8 +247,8 @@ class AsyncSlamWorker(threading.Thread):
         return latest
 
     def _process(self, item):
-        lidar_data, predicted_pose, frame_id, boxes = item
-        res = self.slam.process_lidar(lidar_data, predicted_pose=predicted_pose, dynamic_boxes=boxes)
+        lidar_data, predicted_pose, frame_id = item
+        res = self.slam.process_lidar(lidar_data, predicted_pose=predicted_pose)
         if res.success:
             ex = self.slam.last_extras
             self.output_queue.put(SlamOutput(
@@ -315,4 +266,3 @@ class AsyncSlamWorker(threading.Thread):
 
     def stop(self):
         self.running = False
-        
