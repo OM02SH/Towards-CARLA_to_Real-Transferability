@@ -27,8 +27,8 @@ from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 from srunner.scenariomanager.timer import GameTime
 from srunner.scenariomanager.traffic_events import TrafficEvent, TrafficEventType
 
-from leaderboard.leaderboard.state_estimation.state_from_sensors import CarlaStateEstimatorEngine
-from leaderboard.leaderboard.state_estimation.sensor_dataclasses import LightState
+from leaderboard.state_estimation.state_from_sensors import CarlaStateEstimatorEngine
+from leaderboard.state_estimation.sensor_dataclasses import LightState
 
 def transformation_matrix(px, py, pz, roll, pitch, yaw):
        cr = math.cos(roll)
