@@ -399,9 +399,9 @@ def compute_ttcs(tracked, state: CalculatedState, carla_map: carla.Map, half_len
     else:
         ttcs = np.array([])
 
-    road_exit_ttc = time_to_road_departure(carla_map, state.ego_state,
-                                           np.array([half_length * 2, half_width * 2, half_height * 2]))
-    ttcs = np.append(ttcs, road_exit_ttc)
+    #road_exit_ttc = time_to_road_departure(carla_map, state.ego_state,
+    #                                       np.array([half_length * 2, half_width * 2, half_height * 2]))
+    #ttcs = np.append(ttcs, road_exit_ttc)
     return ttcs, float(np.min(ttcs))
 
 """def get_lidar_radar_info(state: CalculatedState, lidar_stream, radar_streams, cameras, step,
