@@ -1,6 +1,6 @@
 export LEADERBOARD_ROOT=/app/leaderboard
 
-export ROUTES=$LEADERBOARD_ROOT/data/routes_devtest.xml
+export ROUTES=$LEADERBOARD_ROOT/data/bench2drive220.xml
 export ROUTES_SUBSET=0
 export REPETITIONS=1
 export DEBUG_CHALLENGE=1
