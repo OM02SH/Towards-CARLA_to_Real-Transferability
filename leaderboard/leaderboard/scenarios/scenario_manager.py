@@ -187,12 +187,13 @@ class ScenarioManager(object):
                                                             radar_transforms, self.ego_evaluator, self.bbs_evaluator)
         self.sensor_criteria = ShadowCriteria(self.ego_vehicles[0], self.scenario.route)
         #QAG = OnlineCarlaQAGenerator(world,map.name, self.scenario.ego_vehicles[0].id, map.name)
-
-        while self._running:
+        ter = True
+        #while self._running:
+        while ter:
             self._tick_scenario()
             self.sensor_criteria.update()
             print(self.sensor_criteria.results())
-            break
+            ter = False
         print("saving metrics")
         self.ego_evaluator.save_metrics_json(f"/app/out/ego_{Path(map.name).name}_{self.counter}.json")
         self.bbs_evaluator.save_metrics_json(f"/app/out/bbs_{Path(map.name).name}_{self.counter}.json")

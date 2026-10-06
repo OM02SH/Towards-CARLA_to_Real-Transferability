@@ -36,9 +36,9 @@ class ShadowCriteria:
     def _specs(self):
         a, r = self.ego, self.route
         return [
-            ("MaxVelocityTest", lambda: MaxVelocityTest(a, route=r)),
-            ("OnSidewalkTest", lambda: OnSidewalkTest(a, route=r)),
-            ("WrongLaneTest", lambda: WrongLaneTest(a, route=r)),
+            ("MaxVelocityTest", lambda: MaxVelocityTest(a)),
+            ("OnSidewalkTest", lambda: OnSidewalkTest(a)),
+            ("WrongLaneTest", lambda: WrongLaneTest(a)),
             ("RouteCompletionTest", lambda: RouteCompletionTest(a, route=r)),
             ("OutsideRouteLanesTest", lambda: OutsideRouteLanesTest(a, route=r)),
             ("InRouteTest", lambda: InRouteTest(a, route=r, offroad_max=30, terminate_on_failure=False)),
