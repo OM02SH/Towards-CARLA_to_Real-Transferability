@@ -185,8 +185,9 @@ class ScenarioManager(object):
                                                             radar_transforms, self.ego_evaluator, self.bbs_evaluator)
         #QAG = OnlineCarlaQAGenerator(world,map.name, self.scenario.ego_vehicles[0].id, map.name)
 
-        while self._running:
-            self._tick_scenario()
+        """while self._running:
+            self._tick_scenario()"""
+        print("SAVING THE METRICS")
         self.ego_evaluator.save_metrics_json(f"/app/out/ego_{map.name}_{self.counter}.json")
         self.bbs_evaluator.save_metrics_json(f"/app/out/bbs_{map.name}_{self.counter}.json")
 

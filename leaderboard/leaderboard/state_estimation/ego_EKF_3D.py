@@ -635,8 +635,7 @@ class EgoErrorStateEKF3D:
         self._a_world_lpf = a_world.copy() if self._a_world_lpf is None else \
             (1.0 - alpha) * self._a_world_lpf + alpha * a_world
         a_w = self._a_world_lpf
-        a_b = R_bw.T @ a_w                                   # body-frame kinematic acceleration
-        zs = hp.OUT_Z_SIGN
+        a_b = R_bw.T @ a_w
 
         state = Ego3DState(
             x=float(self.p[0]), y=-float(self.p[1]), z=float(self.p[2]),
@@ -645,9 +644,9 @@ class EgoErrorStateEKF3D:
             roll_rate=float(self.gyro[0]), pitch_rate=-float(self.gyro[1]),
             yaw_rate=float(hp.OUT_YAW_RATE_SIGN * self.gyro[2]),
             vx_body=float(v_body[0]), vy_body=float(-v_body[1]), vz_body=float(v_body[2]),
-            ax_body=float(a_b[0]), ay_body=float(-a_b[1]), az_body=float(zs * a_b[2]),
+            ax_body=float(a_b[0]), ay_body=float(-a_b[1]), az_body=float( a_b[2]),
             speed=speed, bg_yaw=self.bg[2], bg_pitch=self.bg[1], bg_roll=self.bg[0],
-            long_accel=float(a_b[0]), lat_accel=float(-a_b[1]), vert_accel=float(zs * a_w[2]),
+            long_accel=float(a_b[0]), lat_accel=float(-a_b[1]), vert_accel=float(a_w[2]),
             vx_world=float(self.v_world[0]), vy_world=float(-self.v_world[1]), vz_world=float(self.v_world[2]),
         )
         self.prev_state = state
