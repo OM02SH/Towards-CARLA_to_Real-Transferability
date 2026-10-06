@@ -1,13 +1,14 @@
 export LEADERBOARD_ROOT=/app/leaderboard
+export IS_BENCH2DRIVE=True
 
 export ROUTES=$LEADERBOARD_ROOT/data/bench2drive220.xml
-export ROUTES_SUBSET=0
+export ROUTES_SUBSET=
 export REPETITIONS=1
-export DEBUG_CHALLENGE=1
+export DEBUG_CHALLENGE=0
 export CHALLENGE_TRACK_CODENAME=SENSORS
 export CHECKPOINT_ENDPOINT="${LEADERBOARD_ROOT}/results.json"
 export RECORD_PATH=
-export RESUME=
+export RESUME=1
 export TEAM_AGENT=tfv6_regnet
 export TEAM_CONFIG=""
 
