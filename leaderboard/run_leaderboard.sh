@@ -11,6 +11,7 @@ export RECORD_PATH=
 export RESUME=1
 export TEAM_AGENT=tfv6_regnet
 export TEAM_CONFIG=""
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 cd /app/leaderboard
 
