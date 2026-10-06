@@ -32,6 +32,8 @@ from leaderboard.utils.result_writer import ResultOutputProvider
 #from leaderboard.leaderboard.autoagents.pcla_functions.QA_lidar import QALidar
 from leaderboard.state_estimation.metrics_sensors import VehicleSensorSuite, SensorDataParser
 from leaderboard.state_estimation.state_from_sensors import CarlaStateEstimatorEngine
+from leaderboard.state_estimation.real_test_BBs import OnlineEvaluator
+from leaderboard.state_estimation.real_test_ego import EgoStateOnlineEvaluator
 
 class ScenarioManager(object):
 
@@ -176,7 +178,10 @@ class ScenarioManager(object):
         self.sensor_suite = VehicleSensorSuite(self.world, self.ego_vehicles[0])
         self.parser = SensorDataParser()
         radar_transforms = {name: t for name, t in self.sensor_suite.mount_transforms.items() if "radar" in name}
-        self.state_from_sensors = CarlaStateEstimatorEngine(self.ego_vehicles[0], self.world, map, self.sensor_suite.mount_transforms["lidar_slam"], radar_transforms)
+        self.bbs_evaluator = OnlineEvaluator(world=self.world, ego_actor_id=self.ego_vehicles[0].id)
+        self.ego_evaluator = EgoStateOnlineEvaluator(self.world, self.ego_vehicles[0].id)
+        self.state_from_sensors = CarlaStateEstimatorEngine(self.ego_vehicles[0], self.world, map, self.sensor_suite.mount_transforms["lidar_slam"],
+                                                            radar_transforms, self.ego_evaluator, self.bbs_evaluator)
         #QAG = OnlineCarlaQAGenerator(world,map.name, self.scenario.ego_vehicles[0].id, map.name)
 
         while self._running:
