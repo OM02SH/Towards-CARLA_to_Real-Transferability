@@ -181,7 +181,7 @@ class DrivenDistanceTest(Criterion):
 
     def initialise(self):
         ego_state = CarlaStateEstimatorEngine.get_calculated_state().ego_state
-        self._last_location = carla.location(x=ego_state.x,y=ego_state.y,z=ego_state.z)
+        self._last_location = carla.Location(x=ego_state.x,y=ego_state.y,z=ego_state.z)
         super(DrivenDistanceTest, self).initialise()
 
     def update(self):
@@ -194,7 +194,7 @@ class DrivenDistanceTest(Criterion):
             return new_status
 
         ego_state = CarlaStateEstimatorEngine.get_calculated_state().ego_state
-        location = carla.location(x=ego_state.x,y=ego_state.y,z=ego_state.z)
+        location = carla.Location(x=ego_state.x,y=ego_state.y,z=ego_state.z)
 
         if location is None:
             return new_status
@@ -257,7 +257,7 @@ class AverageVelocityTest(Criterion):
 
     def initialise(self):
         ego_state = CarlaStateEstimatorEngine.get_calculated_state().ego_state
-        self._last_location = carla.location(x=ego_state.x,y=ego_state.y,z=ego_state.z)
+        self._last_location = carla.Location(x=ego_state.x,y=ego_state.y,z=ego_state.z)
         super(AverageVelocityTest, self).initialise()
 
     def update(self):
@@ -270,7 +270,7 @@ class AverageVelocityTest(Criterion):
             return new_status
         
         ego_state = CarlaStateEstimatorEngine.get_calculated_state().ego_state
-        location = carla.location(x=ego_state.x,y=ego_state.y,z=ego_state.z)
+        location = carla.Location(x=ego_state.x,y=ego_state.y,z=ego_state.z)
 
         if location is None:
             return new_status
@@ -464,7 +464,7 @@ class ActorBlockedTest(Criterion):
                         # The actor has been "blocked" for too long, save the data
                         self.test_status = "FAILURE"
 
-                        vehicle_location = carla.location(e.x,e.y,e.z)
+                        vehicle_location = carla.Location(e.x,e.y,e.z)
                         event = TrafficEvent(event_type=TrafficEventType.VEHICLE_BLOCKED, frame=GameTime.get_frame())
                         event.set_message('Agent got blocked at (x={}, y={}, z={})'.format(
                             round(vehicle_location.x, 3),
@@ -572,7 +572,7 @@ class ReachedRegionTest(Criterion):
         """
         new_status = py_trees.common.Status.RUNNING
         e = CarlaStateEstimatorEngine.get_calculated_state().ego_state
-        location = carla.location(e.x,e.y,e.z)
+        location = carla.Location(e.x,e.y,e.z)
         if location is None:
             return new_status
 
@@ -632,7 +632,7 @@ class OffRoadTest(Criterion):
         """
         new_status = py_trees.common.Status.RUNNING
         e = CarlaStateEstimatorEngine.get_calculated_state().ego_state
-        current_location = carla.location(e.x,e.y,e.z)
+        current_location = carla.Location(e.x,e.y,e.z)
 
         # Get the waypoint at the current location to see if the actor is offroad
         drive_waypoint = self._map.get_waypoint(
@@ -709,7 +709,7 @@ class EndofRoadTest(Criterion):
         """
         new_status = py_trees.common.Status.RUNNING
         e = CarlaStateEstimatorEngine.get_calculated_state().ego_state
-        current_location = carla.location(e.x,e.y,e.z)
+        current_location = carla.Location(e.x,e.y,e.z)
         current_waypoint = self._map.get_waypoint(current_location)
 
         # Get the current road id
@@ -761,7 +761,7 @@ class OnSidewalkTest(Criterion):
         self._onsidewalk_active = False
         self._outside_lane_active = False
         e = CarlaStateEstimatorEngine.get_calculated_state().ego_state
-        self._actor_location = carla.location(e.x,e.y,e.z)
+        self._actor_location = carla.Location(e.x,e.y,e.z)
         self._wrong_sidewalk_distance = 0
         self._wrong_outside_lane_distance = 0
         self._sidewalk_start_location = None
@@ -788,7 +788,7 @@ class OnSidewalkTest(Criterion):
 
         # Some of the vehicle parameters
         e = CarlaStateEstimatorEngine.get_calculated_state().ego_state
-        current_loc = carla.location(e.x,e.y,e.z)
+        current_loc = carla.Location(e.x,e.y,e.z)
         current_tra = carla.transform(location = current_loc, rotation = carla.rotation(yaw = e.yaw, pitch = e.pitch, roll = e.roll))
         current_wp = self._map.get_waypoint(current_loc, lane_type=carla.LaneType.Any)
 
@@ -1023,7 +1023,7 @@ class OutsideRouteLanesTest(Criterion):
 
         self._map = CarlaDataProvider.get_map()
         e = CarlaStateEstimatorEngine.get_calculated_state().ego_state
-        self._last_ego_waypoint = self._map.get_waypoint(carla.location(e.x,e.y,e.z))
+        self._last_ego_waypoint = self._map.get_waypoint(carla.Location(e.x,e.y,e.z))
 
         self._outside_lane_active = False
         self._wrong_lane_active = False
@@ -1048,7 +1048,7 @@ class OutsideRouteLanesTest(Criterion):
 
         # Some of the vehicle parameters
         e = CarlaStateEstimatorEngine.get_calculated_state().ego_state
-        location = carla.location(e.x,e.y,e.z)
+        location = carla.Location(e.x,e.y,e.z)
         if location is None:
             return new_status
 
@@ -1204,7 +1204,7 @@ class WrongLaneTest(Criterion):
         self._in_lane = True
         self._wrong_distance = 0
         e = CarlaStateEstimatorEngine.get_calculated_state().ego_state
-        self._actor_location = carla.location(e.x,e.y,e.z)
+        self._actor_location = carla.Location(e.x,e.y,e.z)
         self._previous_lane_waypoint = self._map.get_waypoint(self._actor_location)
         self._wrong_lane_start_location = None
 
@@ -1219,7 +1219,7 @@ class WrongLaneTest(Criterion):
             new_status = py_trees.common.Status.FAILURE
 
         e = CarlaStateEstimatorEngine.get_calculated_state().ego_state
-        location = carla.location(e.x,e.y,e.z)
+        location = carla.Location(e.x,e.y,e.z)
 
         lane_waypoint = self._map.get_waypoint(location)
         current_lane_id = lane_waypoint.lane_id
@@ -1378,7 +1378,7 @@ class InRadiusRegionTest(Criterion):
         new_status = py_trees.common.Status.RUNNING
 
         e = CarlaStateEstimatorEngine.get_calculated_state().ego_state
-        location = carla.location(e.x,e.y,e.z)
+        location = carla.Location(e.x,e.y,e.z)
         if location is None:
             return new_status
 
@@ -1457,7 +1457,7 @@ class InRouteTest(Criterion):
         new_status = py_trees.common.Status.RUNNING
 
         e = CarlaStateEstimatorEngine.get_calculated_state().ego_state
-        location = carla.location(e.x,e.y,e.z)
+        location = carla.Location(e.x,e.y,e.z)
         if location is None:
             return new_status
 
@@ -1583,7 +1583,7 @@ class RouteCompletionTest(Criterion):
         new_status = py_trees.common.Status.RUNNING
 
         e = CarlaStateEstimatorEngine.get_calculated_state().ego_state
-        location = carla.location(e.x,e.y,e.z)
+        location = carla.Location(e.x,e.y,e.z)
         if location is None:
             return new_status
 
@@ -1697,7 +1697,7 @@ class RunningRedLightTest(Criterion):
             return new_status
 
         e = state.ego_state
-        location = carla.location(e.x, e.y, e.z)
+        location = carla.Location(e.x, e.y, e.z)
 
         # Ego's own physical extent - not environmental perception, just the
         # vehicle's own known dimensions
@@ -1914,7 +1914,7 @@ class RunningStopTest(Criterion):
             return new_status
         e = state.ego_state
 
-        ego_location = carla.location(e.x, e.y, e.z)
+        ego_location = carla.Location(e.x, e.y, e.z)
         ego_forward = carla.Vector3D(math.cos(e.yaw_rad), math.sin(e.yaw_rad), 0.0)
         ego_velocity_dir = carla.Vector3D(e.vx_world, e.vy_world, 0.0)
 
@@ -2012,7 +2012,7 @@ class MinimumSpeedRouteTest(Criterion):
         if state is None:
             return new_status
         e = state.ego_state
-        location = carla.location(e.x, e.y, e.z)
+        location = carla.Location(e.x, e.y, e.z)
 
         for index in range(self._index, min(self._index + self.WINDOWS_SIZE + 1, self._route_length)):
             route_transform = self._route[index][0]
