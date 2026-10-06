@@ -789,7 +789,7 @@ class OnSidewalkTest(Criterion):
         # Some of the vehicle parameters
         e = CarlaStateEstimatorEngine.get_calculated_state().ego_state
         current_loc = carla.Location(e.x,e.y,e.z)
-        current_tra = carla.transform(location = current_loc, rotation = carla.rotation(yaw = e.yaw, pitch = e.pitch, roll = e.roll))
+        current_tra = carla.Transform(location = current_loc, rotation = carla.Rotation(yaw = e.yaw, pitch = e.pitch, roll = e.roll))
         current_wp = self._map.get_waypoint(current_loc, lane_type=carla.LaneType.Any)
 
         # Case 1) Car center is at a sidewalk
