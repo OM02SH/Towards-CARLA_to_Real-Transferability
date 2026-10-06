@@ -236,7 +236,7 @@ class EgoStateOnlineEvaluator:
         return gt
 
     def add_frame(self, frame_id: str, ego_state: Ego3DState):
-        self._gt_frames[frame_id] = self._with_derived_accel(self.vehicle)
+        self._gt_frames[frame_id] = self._with_derived_accel(ego_state_from_vehicle(self.vehicle))
         self._pred_frames[frame_id] = ego_state
 
     def reset(self) -> None:
