@@ -35,7 +35,7 @@ from leaderboard.state_estimation.state_from_sensors import CarlaStateEstimatorE
 from leaderboard.state_estimation.real_test_BBs import OnlineEvaluator
 from leaderboard.state_estimation.real_test_ego import EgoStateOnlineEvaluator
 from pathlib import Path
-
+from leaderboard.state_estimation.shadow_criteria import ShadowCriteria
 
 class ScenarioManager(object):
 
@@ -185,10 +185,14 @@ class ScenarioManager(object):
         self.ego_evaluator = EgoStateOnlineEvaluator(self.world, self.ego_vehicles[0].id)
         self.state_from_sensors = CarlaStateEstimatorEngine(self.ego_vehicles[0], self.world, map, self.sensor_suite.mount_transforms["lidar_slam"],
                                                             radar_transforms, self.ego_evaluator, self.bbs_evaluator)
+        self.sensor_criteria = ShadowCriteria(self.scenario.route)
         #QAG = OnlineCarlaQAGenerator(world,map.name, self.scenario.ego_vehicles[0].id, map.name)
 
         while self._running:
             self._tick_scenario()
+            self.sensor_criteria.update()
+            print(self.sensor_criteria.results())
+            break
         print("saving metrics")
         self.ego_evaluator.save_metrics_json(f"/app/out/ego_{Path(map.name).name}_{self.counter}.json")
         self.bbs_evaluator.save_metrics_json(f"/app/out/bbs_{Path(map.name).name}_{self.counter}.json")
