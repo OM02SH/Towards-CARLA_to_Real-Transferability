@@ -188,12 +188,11 @@ class ScenarioManager(object):
         #QAG = OnlineCarlaQAGenerator(world,map.name, self.scenario.ego_vehicles[0].id, map.name)
 
         while self._running:
-            print("run")
             self._tick_scenario
-        #print("saving metrics")
-        #self.ego_evaluator.save_metrics_json(f"/app/out/ego_{Path(map.name).name}_{self.counter}.json")
-        #self.bbs_evaluator.save_metrics_json(f"/app/out/bbs_{Path(map.name).name}_{self.counter}.json")
-        #self.counter += 1 
+        print("saving metrics")
+        self.ego_evaluator.save_metrics_json(f"/app/out/ego_{Path(map.name).name}_{self.counter}.json")
+        self.bbs_evaluator.save_metrics_json(f"/app/out/bbs_{Path(map.name).name}_{self.counter}.json")
+        self.counter += 1 
 
     def _tick_scenario(self):
         """
@@ -222,6 +221,7 @@ class ScenarioManager(object):
                 self._agent_watchdog.update()
                 # ego_action = self._agent_wrapper()
                 ego_action = self.pcla.get_action()
+                print("action")
                 """if self.tick_count!=0 and self.tick_count/10 == 0:
                     lidar_points_ego = self.QALidar.get_points_ego_frame()
                     (combined_qas, num_questions, num_objects, num_questions_per_category,
