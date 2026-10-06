@@ -185,7 +185,7 @@ class ScenarioManager(object):
         self.ego_evaluator = EgoStateOnlineEvaluator(self.world, self.ego_vehicles[0].id)
         self.state_from_sensors = CarlaStateEstimatorEngine(self.ego_vehicles[0], self.world, map, self.sensor_suite.mount_transforms["lidar_slam"],
                                                             radar_transforms, self.ego_evaluator, self.bbs_evaluator)
-        self.sensor_criteria = ShadowCriteria(self.scenario.route)
+        self.sensor_criteria = ShadowCriteria(self.ego_vehicles[0], self.scenario.route)
         #QAG = OnlineCarlaQAGenerator(world,map.name, self.scenario.ego_vehicles[0].id, map.name)
 
         while self._running:
