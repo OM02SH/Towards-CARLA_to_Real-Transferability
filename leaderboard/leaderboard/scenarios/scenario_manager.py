@@ -34,6 +34,8 @@ from leaderboard.state_estimation.metrics_sensors import VehicleSensorSuite, Sen
 from leaderboard.state_estimation.state_from_sensors import CarlaStateEstimatorEngine
 from leaderboard.state_estimation.real_test_BBs import OnlineEvaluator
 from leaderboard.state_estimation.real_test_ego import EgoStateOnlineEvaluator
+from pathlib import Path
+
 
 class ScenarioManager(object):
 
@@ -188,8 +190,8 @@ class ScenarioManager(object):
         """while self._running:
             self._tick_scenario()"""
         print("SAVING THE METRICS")
-        self.ego_evaluator.save_metrics_json(f"/app/out/ego_{map.name}_{self.counter}.json")
-        self.bbs_evaluator.save_metrics_json(f"/app/out/bbs_{map.name}_{self.counter}.json")
+        self.ego_evaluator.save_metrics_json(f"/app/out/ego_{Path(map.name).name}_{self.counter}.json")
+        self.bbs_evaluator.save_metrics_json(f"/app/out/bbs_{Path(map.name).name}_{self.counter}.json")
 
     def _tick_scenario(self):
         """
