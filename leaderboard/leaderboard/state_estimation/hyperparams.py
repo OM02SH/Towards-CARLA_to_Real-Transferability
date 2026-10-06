@@ -51,7 +51,7 @@ SPEEDO_QUANT = 0.03
 SPEEDO_SCALE_ERR = 0.01          
 SPEEDO_DROPOUT = 0.01
  
-USE_GNSS_VELOCITY = False
+USE_GNSS_VELOCITY = True
 MAX_HISTORY = 20
 MIN_HISTORY = 5
  
@@ -167,7 +167,7 @@ OPENPCDET_TOOLS_DIR = os.path.join(_THIS_DIR, "../../../pcdet")
 OPENPCDET_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 OPENPCDET_DYNAMIC_CLASSES = {"car", "truck", "pedestrian", "bus", 'motorcycle','bicycle', 'train'}
 OPENPCDET_STATIC_CLASSES = {"wall", "fence", "guard_rail"}
-OPENPCDET_SCORE_THRESH = 0.2
+OPENPCDET_SCORE_THRESH = 0.3
 OPENPCDET_BOX_MARGIN_M = 0.3     
 cam_intrinsic = np.array([
     [552.554261, 0.0, 704.0, 0.0],
@@ -196,12 +196,12 @@ extrinsics = np.array([
 #################### UKF ###################
 
 POSITION_STD = 1
+Z_STD = 0.2
 YAW_STD = math.radians(10.0)
 ACCEL_STD = 2.0
 YAW_RATE_STD = math.radians(20.0)
 L_STD = 0.1
 W_STD = 0.1
-Z_STD = 0.2
 H_STD = 0.2
 PROCESS_JERK_STD = 5
 PROCESS_JERK_LAT_SCALE = 1.0
@@ -218,11 +218,12 @@ LIDAR_H_STD = 0.15
 RADAR_VELOCITY_STD = 0.2
 YAW_ALIGN_MIN_SPEED = 2.0
 RADAR_GATE_PROB = 0.95
-DET_VELOCITY_STD = 2.0
-RADAR_GATE_FLOOR_STD = 1.5
+DET_VELOCITY_STD = 3.0
+RADAR_GATE_FLOOR_STD = 1
 DET_VELOCITY_MEAS_STD = 3.0
 
 ############## Traffic Light ###############
+
 STOP_CLASS_ID = 0
 GO_CLASS_ID = 1
 EXPECTED_ASPECT_RATIO = 0.273

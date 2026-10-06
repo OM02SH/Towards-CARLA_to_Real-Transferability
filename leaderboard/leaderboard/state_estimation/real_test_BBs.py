@@ -198,10 +198,7 @@ class CarlaGroundTruthExtractor:
     """
     def __init__(self, world: carla.World, ego_actor_id: int,
                  static_max_range: float = 50.0, actor_max_range: float = 50.0,
-                 min_points_for_visibility: int = 5, visibility_margin: float = 0.2,
-                 include_mesh_props: bool = True, canonical_props: bool = True):
-        self.canonical_props = canonical_props           # swap length/width (and yaw +90) when a prop's long side is local y
-        self.include_mesh_props = include_mesh_props     # parked / placed cars are often static.prop.mesh actors
+                 min_points_for_visibility: int = 5, visibility_margin: float = 0.2):
         self.world = world
         self.ego_actor_id = ego_actor_id
         self.static_max_range = static_max_range
@@ -250,12 +247,8 @@ class CarlaGroundTruthExtractor:
                 return tag
         return "car"
 
-    def _get_points_in_box(self, box: Box, lidar_points_ego: Optional[np.ndarray]) -> int:
-        if lidar_points_ego is None:
-            # no lidar available: do not fake invisibility, treat every box as visible
-            return self.min_points_for_visibility
-        if lidar_points_ego.size == 0:
-            return 0
+    def _get_points_in_box(self, box: Box, lidar_points_ego: np.ndarray) -> int:
+        if lidar_points_ego.size == 0:  return 0
         rel = lidar_points_ego[:, :3] - box.translation
         c, s = math.cos(-box.yaw), math.sin(-box.yaw)
         x_local = c * rel[:, 0] - s * rel[:, 1]
@@ -272,8 +265,7 @@ class CarlaGroundTruthExtractor:
         boxes = []
         all_actors = self.world.get_actors()
         candidates = list(all_actors.filter("vehicle.*")) + list(all_actors.filter("walker.pedestrian.*"))
-        if self.include_mesh_props:
-            candidates += list(all_actors.filter("static.prop.mesh"))
+        candidates += list(all_actors.filter("static.prop.mesh"))
 
         def _tag_from_type_id(type_id: str) -> str:
             t = type_id.lower()
@@ -291,7 +283,6 @@ class CarlaGroundTruthExtractor:
             size = np.array([2.0 * bbox.extent.x, 2.0 * bbox.extent.y, 2.0 * bbox.extent.z])
             yaw_world = math.radians(actor_transform.rotation.yaw + bbox.rotation.yaw)
             if canonical and size[1] > size[0]:
-                # prop meshes can have their long axis on local y: make x the length, like a vehicle bounding box
                 size[0], size[1] = size[1], size[0]
                 yaw_world += math.pi / 2.0
             ego_yaw = math.radians(ego_transform.rotation.yaw)
@@ -316,12 +307,10 @@ class CarlaGroundTruthExtractor:
                 tag = self._prop_tag(actor)
             else:
                 tag = _tag_from_type_id(actor.type_id)
-            box = box_from_actor(actor, tag=tag, canonical=is_prop and self.canonical_props)
+            box = box_from_actor(actor, tag=tag, canonical=is_prop)
             setattr(box, 'source', 'prop' if is_prop else ('pedestrian' if actor.type_id.startswith("walker.") else 'vehicle'))
             box.frame_id = frame_id
 
-            # occluded / sparse boxes are tagged, not deleted: they are never penalised as misses,
-            # but they earn credit when the tracker finds them anyway
             is_visible = self._get_points_in_box(box, lidar_points_ego) >= self.min_points_for_visibility
             setattr(box, 'visible', is_visible)
             boxes.append(box)
@@ -357,6 +346,7 @@ class CarlaGroundTruthExtractor:
                  self._static_boxes(ego_transform, frame_id, lidar_points_ego))
 
 def print_results(metrics: dict) -> None:
+    """This function was written by a LLM"""
     print()
     print("=" * 88)
     print("CLASS-AGNOSTIC BOX PRESENCE / ERROR EVALUATION  (misses only penalised for lidar-visible GT)")
@@ -410,7 +400,10 @@ def diagnose_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List
                     static_speed: float = 0.2, score_edges: Sequence[float] = (0.2, 0.3, 0.4, 0.5),
                     ego_pose: Optional[Dict[str, Tuple[float, float, float]]] = None,
                     ghost_ctx: Optional[Dict[tuple, Tuple[str, str]]] = None) -> dict:
-    """Where do the errors come from? Range, false-positive anatomy, precision vs score, heading flips, velocity."""
+    """
+        This function was written by a LLM
+        Where do the errors come from? Range, false-positive anatomy, precision vs score, heading flips, velocity.
+    """
     inner = list(range_edges[1:-1])
     nb = len(range_edges) - 1
     score_edges = list(score_edges)
@@ -526,6 +519,9 @@ def diagnose_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List
             "by_source": by_source, "rec_src": rec_src, "by_ego": by_ego, "ego_edges": ego_edges}
 
 def print_diagnostics(d: dict) -> None:
+    """
+        This function was completely written by an LLM
+    """
     nan = float("nan")
     print(f"\nDIAGNOSTICS @ {d['thresh']} m match threshold")
     print(f"{'range (m)':>12}{'visGT':>8}{'rec(vis)':>10}{'unseenGT':>10}{'unseen-hit':>12}{'preds':>8}{'precision':>11}")

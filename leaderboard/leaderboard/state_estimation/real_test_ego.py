@@ -211,9 +211,32 @@ class EgoStateOnlineEvaluator:
         self.stationary_threshold = stationary_threshold
         self._gt_frames: Dict[str, Ego3DState] = {}
         self._pred_frames: Dict[str, Ego3DState] = {}
+        self.dt = 0.05
+        self._alpha = 0.05 / (hp.ACCEL_OUT_LPF_TAU + 0.05) if hp.ACCEL_OUT_LPF_TAU > 0 else 1.0
+        self._prev_v_w = None
+        self._a_lpf = None
+
+    def _with_derived_accel(self, gt):
+        """Replace get_acceleration() by d(GT velocity)/dt, filtered like the estimator output."""
+        v_w = np.array([gt.vx_world, gt.vy_world, gt.vz_world], dtype=float)
+        a_w = np.zeros(3) if self._prev_v_w is None else (v_w - self._prev_v_w) / self.dt
+        self._prev_v_w = v_w
+        self._a_lpf = a_w if self._a_lpf is None else (1 - self._alpha) * self._a_lpf + self._alpha * a_w
+        a_w = self._a_lpf
+
+        tf = carla.Transform(carla.Location(),
+                             carla.Rotation(pitch=gt.pitch, yaw=gt.yaw, roll=gt.roll)) 
+        R_wb = np.asarray(tf.get_inverse_matrix(), dtype=float)[:3, :3]
+        a_b = R_wb @ a_w
+        c, s = math.cos(gt.yaw_rad), math.sin(gt.yaw_rad)
+        gt.ax_body, gt.ay_body, gt.az_body = a_b
+        gt.long_accel = c * a_w[0] + s * a_w[1]
+        gt.lat_accel = -s * a_w[0] + c * a_w[1]
+        gt.vert_accel = a_w[2]
+        return gt
 
     def add_frame(self, frame_id: str, ego_state: Ego3DState):
-        self._gt_frames[frame_id] = ego_state_from_vehicle(self.vehicle)
+        self._gt_frames[frame_id] = self._with_derived_accel(self.vehicle)
         self._pred_frames[frame_id] = ego_state
 
     def reset(self) -> None:
@@ -232,4 +255,5 @@ class EgoStateOnlineEvaluator:
         print_results(self.evaluate())
 
     def save_metrics_json(self, filename: "str | Path") -> None:
+        print("filename: ", filename)
         save_metrics(self.evaluate(), Path(filename))
