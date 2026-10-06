@@ -143,6 +143,7 @@ def find_gps_ref(
 
         initial_guess = [0.0, 0.0]
         solution = fsolve(equations, initial_guess)
+        print("fsolve finished")
         return solution[0], solution[1]
     except Exception as e:
         LOG.warning(e)
