@@ -50,6 +50,8 @@ RUN pip install --no-cache-dir \
     https://github.com/fafraob/spconv-wheels/releases/download/v2.3.8/cumm_cu128-0.8.2-cp310-cp310-linux_x86_64.whl \
     https://github.com/fafraob/spconv-wheels/releases/download/v2.3.8/spconv_cu128-2.3.8-cp310-cp310-linux_x86_64.whl
 
+RUN pip install --no-cache-dir "tbb>=2021.6.0"
+
 ENV TORCH_CUDA_ARCH_LIST="12.0"
 
 COPY OpenPCDet /opt/OpenPCDet
