@@ -21,7 +21,7 @@ import leaderboard.state_estimation.hyperparams as hp
 from pcdet.ops.roiaware_pool3d import roiaware_pool3d_utils
 
 DEBUG_PRINT = False
-FIX_FRAMES = False
+FIX_FRAMES = True
 
 def _rot_z(deg: float) -> np.ndarray:
     c, s = math.cos(math.radians(deg)), math.sin(math.radians(deg))

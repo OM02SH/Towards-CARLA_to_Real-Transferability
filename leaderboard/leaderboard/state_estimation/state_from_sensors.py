@@ -25,7 +25,8 @@ class CarlaStateEstimatorEngine:
             world: carla.World,
             world_map: carla.Map, 
             lidar_transform: carla.Transform,
-            radar_transforms: dict[str, carla.Transform] = None):
+            radar_transforms: dict[str, carla.Transform],
+            ego_evaluator, bbs_evaluator):
         self.map = world_map
         bb = vehicle.bounding_box
         self.ego_to_world_transform = np.array(vehicle.get_transform().get_matrix(), dtype=np.float32)
@@ -48,8 +49,8 @@ class CarlaStateEstimatorEngine:
         self.lidar_transform = np.array(carla.Transform(
                 carla.Location(x=loc.x, y=loc.y, z=loc.z + ext.z + 0.2),
                 carla.Rotation(pitch=0.0, yaw=0.0, roll=0.0)).get_matrix())
-        self.bbs_evaluator = OnlineEvaluator(world=world, ego_actor_id=vehicle.id)
-        self.ego_evaluator = EgoStateOnlineEvaluator(world, vehicle.id)
+        self.bbs_evaluator = bbs_evaluator
+        self.ego_evaluator = ego_evaluator
         self.tlw.start()
         self.tracker.start()
         self._last_result = None

@@ -4,9 +4,6 @@ import numpy as np
 import math
 import carla
 
-RADAR_GATE_FLOOR_STD = 1.5
-DET_VELOCITY_MEAS_STD = 3.0
-
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))  
  
 # ============================================================================
@@ -15,12 +12,12 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 G = 9.81
 EARTH_RADIUS_EQUA = 6378137.0
  
-SIGMA_GNSS_XY = 0.2
+SIGMA_GNSS_XY = 0.1
 SIGMA_GNSS_Z = 0.25
-SIGMA_COMPASS = math.radians(5.0)
+SIGMA_COMPASS = math.radians(1.0)
 SIGMA_WHEEL_LONG = 0.08          
-SIGMA_WHEEL_LAT = 0.10   
-SIGMA_GRAVITY_DIRECTION = 0.1
+SIGMA_WHEEL_LAT = 0.05
+SIGMA_GRAVITY_DIRECTION = 0.03
 SIGMA_GNSS_VEL = 1.5
  
 SIGMA_GYRO = math.radians(0.5)
@@ -63,7 +60,7 @@ MAX_R_SCALE = 50.0
 GATE_MAX_CONSEC_REJECT = 10      
 HISTORY_LEN = 600                
  
-ACCEL_OUT_LPF_TAU = 0.15         
+ACCEL_OUT_LPF_TAU = 0.05         
 OUT_YAW_RATE_SIGN = -1.0         
 OUT_Z_SIGN = +1.0                
  
@@ -81,7 +78,7 @@ SLAM_REL_VEL_FLOOR = 0.05
 SLAM_REL_GYRO_FLOOR = 0.01       
 SLAM_INFO_COND_CAP = 100.0       
 
-SLAM_ABS_TILT_Z = True
+SLAM_ABS_TILT_Z = False
 SIGMA_SLAM_TILT = math.radians(1.0)
 SIGMA_SLAM_Z = 0.30
  
@@ -222,6 +219,8 @@ RADAR_VELOCITY_STD = 0.2
 YAW_ALIGN_MIN_SPEED = 2.0
 RADAR_GATE_PROB = 0.95
 DET_VELOCITY_STD = 2.0
+RADAR_GATE_FLOOR_STD = 1.5
+DET_VELOCITY_MEAS_STD = 3.0
 
 ############## Traffic Light ###############
 STOP_CLASS_ID = 0

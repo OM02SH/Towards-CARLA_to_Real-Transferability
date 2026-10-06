@@ -185,6 +185,9 @@ def global_boxes_to_ego(boxes: Sequence[Box], ego_state: Ego3DState) -> List[Box
         )
         for extra in ('score', 'det_speed', 'n_radar'):
             setattr(new_box, extra, getattr(box, extra, float('nan')))
+        dvx, dvy = getattr(box, 'det_vx', float('nan')), getattr(box, 'det_vy', float('nan'))
+        setattr(new_box, 'det_vx', cos_yaw * dvx + sin_yaw * dvy)       # same rotation as the track velocity
+        setattr(new_box, 'det_vy', -sin_yaw * dvx + cos_yaw * dvy)
         converted.append(new_box)
     return converted
 
@@ -425,6 +428,8 @@ def diagnose_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List
     ori = {"static": [], "moving": []}      # yaw error, non-pedestrians only
     by_source: Dict[str, List[tuple]] = {}  # (ATE, ASE, yaw diff, fold180, fold90)
     rec_src: Dict[str, List[int]] = {}      # source -> [visible GT, visible hit, unseen GT, unseen hit]
+    ego_edges = [0.5, 3.0]                  # ego speed bins: <0.5, 0.5-3, >=3 m/s
+    by_ego = [dict(frames=0, vis=0, hit=0, pred=0, fp=0, ate_sum=0.0, ate_n=0) for _ in range(len(ego_edges) + 1)]
 
     for fid in sorted(set(gt_frames) | set(pred_frames)):
         gt = _filter_range(gt_frames.get(fid, []), max_range)
@@ -432,6 +437,19 @@ def diagnose_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List
         pairs, _, un_pred = greedy_match(gt, pred, thresh)
         matched_gt = {gi for gi, _ in pairs}
         unmatched_pred = set(un_pred)
+        es_f = ego_speed.get(fid, float("nan"))
+        if np.isfinite(es_f):
+            eb = by_ego[int(np.searchsorted(ego_edges, es_f, side="right"))]
+            eb["frames"] += 1
+            eb["pred"] += len(pred)
+            eb["fp"] += len(un_pred)
+            for gi, g in enumerate(gt):
+                if _is_visible(g):
+                    eb["vis"] += 1
+                    eb["hit"] += int(gi in matched_gt)
+            for gi, pi in pairs:
+                eb["ate_sum"] += center_distance(gt[gi], pred[pi])
+                eb["ate_n"] += 1
         for gi, g in enumerate(gt):
             r = rng[bucket(g)]
             rs = rec_src.setdefault(getattr(g, "source", "unknown"), [0, 0, 0, 0])
@@ -493,7 +511,8 @@ def diagnose_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List
                 ang = math.degrees(math.acos(max(-1.0, min(1.0, c))))
             vel[kind].append((velocity_l2(g, p), ps, es, gs, ang, 1.0 if g.tag == "pedestrian" else 0.0,
                               float(p.velocity[0]), float(p.velocity[1]), float(g.velocity[0]), float(g.velocity[1]),
-                              float(getattr(p, "det_speed", float("nan"))), float(getattr(p, "n_radar", float("nan")))))
+                              float(getattr(p, "det_speed", float("nan"))), float(getattr(p, "n_radar", float("nan"))),
+                              float(getattr(p, "det_vx", float("nan"))), float(getattr(p, "det_vy", float("nan")))))
             if g.tag != "pedestrian":
                 ori[kind].append(yaw_diff(g, p))
             yd = yaw_diff(g, p)
@@ -504,7 +523,7 @@ def diagnose_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List
     return {"thresh": thresh, "ranges": [(range_edges[i], range_edges[i + 1]) for i in range(nb)],
             "range_stats": rng, "score_edges": score_edges, "score_stats": sc, "fp_kind": fp_kind,
             "ghost_anatomy": ghost_anatomy, "ghost_rows": ghost_rows, "vel": vel, "ori": ori,
-            "by_source": by_source, "rec_src": rec_src}
+            "by_source": by_source, "rec_src": rec_src, "by_ego": by_ego, "ego_edges": ego_edges}
 
 def print_diagnostics(d: dict) -> None:
     nan = float("nan")
@@ -515,6 +534,16 @@ def print_diagnostics(d: dict) -> None:
         uh = r["hit_unseen"] / r["unseen"] if r["unseen"] else nan
         pr = 1.0 - r["fp"] / r["pred"] if r["pred"] else nan
         print(f"{lo:>5.0f}-{hi:<6.0f}{r['vis']:>8}{vr:>10.3f}{r['unseen']:>10}{uh:>12.3f}{r['pred']:>8}{pr:>11.3f}")
+
+    print("\nPerformance by ego speed (same numbers as above, split; compare runs on these rows, not on the aggregate)")
+    print(f"{'ego speed':>14}{'frames':>8}{'visGT':>8}{'rec(vis)':>10}{'preds':>8}{'precision':>11}{'ATE(m)':>8}")
+    e = d["ego_edges"]
+    names = [f"< {e[0]:.1f}"] + [f"{e[i]:.1f} - {e[i+1]:.1f}" for i in range(len(e) - 1)] + [f">= {e[-1]:.1f}"]
+    for name, b in zip(names, d["by_ego"]):
+        if b["frames"]:
+            print(f"{name:>14}{b['frames']:>8}{b['vis']:>8}{(b['hit'] / b['vis'] if b['vis'] else nan):>10.3f}"
+                  f"{b['pred']:>8}{(1 - b['fp'] / b['pred'] if b['pred'] else nan):>11.3f}"
+                  f"{(b['ate_sum'] / b['ate_n'] if b['ate_n'] else nan):>8.2f}")
 
     tot = sum(d["fp_kind"].values())
     if tot:
@@ -582,6 +611,24 @@ def print_diagnostics(d: dict) -> None:
         print("\nRecall by GT source                      visGT  rec(vis)  unseenGT  unseen-hit")
         for src, (v, hv, u, hu) in sorted(d["rec_src"].items()):
             print(f"  {src:<12}{'':>26}{v:>8}{(hv / v if v else float('nan')):>10.3f}{u:>10}{(hu / u if u else float('nan')):>12.3f}")
+    st_all = np.asarray(d["vel"]["static"], dtype=float).reshape(-1, 14)
+    mv_all = np.asarray(d["vel"]["moving"], dtype=float).reshape(-1, 14)
+    mv_all = mv_all[mv_all[:, 5] == 0]
+    if (np.isfinite(st_all[:, 12]).any() or np.isfinite(mv_all[:, 12]).any()):
+        print("\nRAW detector velocity, absolute or ego-relative? (error of the detector's own vx,vy vs GT, before any filtering)")
+        print("  abs hypothesis: v_det = v_object      rel hypothesis: v_det = v_object - v_ego  (so v_object = v_det + v_ego)")
+        print(f"  {'GT':>8}{'ego speed':>14}{'n':>8}{'err if abs':>13}{'err if rel':>13}   verdict")
+        for name, arr in (("static", st_all), ("moving", mv_all)):
+            for lo, hi in ((0.0, 0.5), (0.5, 3.0), (3.0, math.inf)):
+                m = (arr[:, 2] >= lo) & (arr[:, 2] < hi) & np.isfinite(arr[:, 12]) & np.isfinite(arr[:, 13])
+                if not m.any():
+                    continue
+                sub = arr[m]
+                e_abs = np.hypot(sub[:, 12] - sub[:, 8], sub[:, 13] - sub[:, 9]).mean()
+                e_rel = np.hypot(sub[:, 12] + sub[:, 2] - sub[:, 8], sub[:, 13] - sub[:, 9]).mean()
+                verdict = "(identical at standstill)" if hi <= 0.5 else ("ABSOLUTE" if e_abs < e_rel else "RELATIVE")
+                print(f"  {name:>8}{lo:>6.1f}-{(hi if hi < 1e9 else 99):<5.1f}{int(m.sum()):>8}{e_abs:>13.2f}{e_rel:>13.2f}   {verdict}")
+
     if d["by_source"]:
         print("\nErrors by GT source (matched pairs)      n     ATE     ASE  AOE raw  fold-180  fold-90  >57deg off  flipped>120")
         for src, vals in sorted(d["by_source"].items()):
@@ -592,14 +639,14 @@ def print_diagnostics(d: dict) -> None:
         print("  (fold-90 small while fold-180 is large = boxes are rotated by 90 degrees, i.e. swapped length/width axes)")
 
     print("\nVelocity (matched pairs)")
-    a = np.asarray(d["vel"]["static"], dtype=float).reshape(-1, 12)
+    a = np.asarray(d["vel"]["static"], dtype=float).reshape(-1, 14)
     if a.size:
         print(f"  GT static: n={len(a)}  AVE={_fmean(a[:, 0]):.2f}  mean pred speed={_fmean(a[:, 1]):.2f}")
         for lo, hi in ((0.0, 0.5), (0.5, 3.0), (3.0, math.inf)):
             m = (a[:, 2] >= lo) & (a[:, 2] < hi)
             if m.any():
                 print(f"      ego speed {lo:>3.1f}-{hi:<4.1f} m/s: n={int(m.sum()):>6}  AVE={_fmean(a[m, 0]):.2f}")
-    a = np.asarray(d["vel"]["moving"], dtype=float).reshape(-1, 12)
+    a = np.asarray(d["vel"]["moving"], dtype=float).reshape(-1, 14)
     if a.size:
         print(f"  GT moving:  {'group':<22}{'n':>7}{'AVE':>7}{'GT spd':>8}{'track spd':>10}{'raw det spd':>12}{'radar pts':>10}{'med angle err':>15}{'reversed>120':>14}")
         veh = a[:, 5] == 0
@@ -702,7 +749,7 @@ class OnlineEvaluator:
         pred_boxes : list[Box] = []
         for pb in track_bbs:
             box = Box.from_trackedbb(pb, frame_id=frame_id)
-            for extra in ('score', 'det_speed', 'n_radar'):
+            for extra in ('score', 'det_speed', 'n_radar', 'det_vx', 'det_vy'):
                 setattr(box, extra, float(getattr(pb, extra, float('nan'))))
 
             if tracker_is_right_handed:
