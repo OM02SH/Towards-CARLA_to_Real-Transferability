@@ -87,6 +87,7 @@ class ScenarioManager(object):
         # Use the callback_id inside the signal handler to allow external interrupts
         signal.signal(signal.SIGINT, self.signal_handler)
         self.pcla = None
+        self.counter = 0
 
     def signal_handler(self, signum, frame):
         """
@@ -186,6 +187,8 @@ class ScenarioManager(object):
 
         while self._running:
             self._tick_scenario()
+        self.ego_evaluator.save_metrics_json(f"/app/out/ego_{map.name}_{self.counter}.json")
+        self.bbs_evaluator.save_metrics_json(f"/app/out/bbs_{map.name}_{self.counter}.json")
 
     def _tick_scenario(self):
         """
