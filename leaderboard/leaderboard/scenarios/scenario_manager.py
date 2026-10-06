@@ -322,6 +322,10 @@ class ScenarioManager(object):
 
         # Make sure the scenario thread finishes to avoid blocks
         self._running = False
+        try:
+            CarlaDataProvider.get_world().tick(1.0)
+        except Exception:
+            pass
         self._scenario_thread.join()
         self._scenario_thread = None
 
