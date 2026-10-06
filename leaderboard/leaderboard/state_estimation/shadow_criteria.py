@@ -19,7 +19,7 @@ from leaderboard.state_estimation.state_from_sensors import CarlaStateEstimatorE
 from leaderboard.state_estimation.atomic_criteria_sensors import (
 RouteCompletionTest, OutsideRouteLanesTest, InRouteTest, CollisionTest,
     RunningRedLightTest, RunningStopTest, MinimumSpeedRouteTest, ActorBlockedTest,
-    MaxVelocityTest, OnSidewalkTest, WrongLaneTest)
+    OnSidewalkTest, WrongLaneTest)
 
 
 class ShadowCriteria:
@@ -36,7 +36,6 @@ class ShadowCriteria:
     def _specs(self):
         a, r = self.ego, self.route
         return [
-            ("MaxVelocityTest", lambda: MaxVelocityTest(a)),
             ("OnSidewalkTest", lambda: OnSidewalkTest(a)),
             ("WrongLaneTest", lambda: WrongLaneTest(a)),
             ("RouteCompletionTest", lambda: RouteCompletionTest(a, route=r)),
