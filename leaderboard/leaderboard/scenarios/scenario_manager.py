@@ -36,6 +36,8 @@ from leaderboard.state_estimation.real_test_BBs import OnlineEvaluator
 from leaderboard.state_estimation.real_test_ego import EgoStateOnlineEvaluator
 from pathlib import Path
 from leaderboard.state_estimation.shadow_criteria import ShadowCriteria
+out_dir = Path("/home/omar-shaat/thesis_final/out")
+out_dir.mkdir(parents=True, exist_ok=True)
 
 class ScenarioManager(object):
 
@@ -197,10 +199,11 @@ class ScenarioManager(object):
             self._tick_scenario()
             self.sensor_criteria.update()
         #print("saving metrics")
-        self.ego_evaluator.save_metrics_json(f"/out/ego_{Path(map.name).name}_{self.counter}.json")
-        self.bbs_evaluator.save_metrics_json(f"/out/bbs_{Path(map.name).name}_{self.counter}.json")
-        self.sensor_criteria.save_json(f"/out/criteria_{Path(map.name).name}_{self.counter}.json")
-        self.counter += 1 
+        map_name = Path(map.name).name
+        self.ego_evaluator.save_metrics_json(out_dir / f"ego_{map_name}_{self.counter}.json")
+        self.bbs_evaluator.save_metrics_json(out_dir / f"bbs_{map_name}_{self.counter}.json")
+        self.sensor_criteria.save_json(out_dir / f"criteria_{map_name}_{self.counter}.json")
+        self.counter += 1
 
     def _tick_scenario(self):
         """
