@@ -318,10 +318,28 @@ class ScenarioManager(object):
             if self.scenario is not None:
                 self.scenario.terminate()
 
+            try:
+                from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
+                world = CarlaDataProvider.get_world()
+                if world is not None:
+                    for sensor in world.get_actors().filter('*sensor*'):
+                        if sensor.is_alive:
+                            try:
+                                sensor.stop()  # Safely close the active stream
+                            except Exception:
+                                pass
+            except Exception:
+                pass
+            # --------------------------------------
+            if self.scenario is not None:
+                self.scenario.terminate()
+
             if self.pcla is not None:
                 self.pcla.cleanup()
                 self.pcla = None 
-
+            if self.sensor_suite is not None:
+                self.sensor_suite.destroy()
+                self.sensor_suite = None
             self.analyze_scenario()
 
         if hasattr(self, 'sensor_suite') and self.sensor_suite is not None:
