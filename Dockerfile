@@ -57,6 +57,8 @@ ENV TORCH_CUDA_ARCH_LIST="12.0"
 COPY OpenPCDet /opt/OpenPCDet
 RUN pip install --no-cache-dir -e /opt/OpenPCDet
 
+RUN pip install --no-cache-dir py-spy
+
 ENV PYTHONPATH=/opt/OpenPCDet:/opt/carla/PythonAPI/carla:/app
 
-CMD ["bash", "-c", "cd /app/leaderboard && bash run_leaderboard.sh"]
+CMD ["bash", "-c", "cd /app && bash run_full.sh"]
