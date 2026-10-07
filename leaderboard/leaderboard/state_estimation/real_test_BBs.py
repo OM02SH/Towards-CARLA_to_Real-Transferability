@@ -859,10 +859,10 @@ class OnlineEvaluator:
     def print_report(self) -> None:
         print_results(self.evaluate())
         print_diagnostics(self.diagnose())
-        try:
+        """try:
             self.save_metrics_json(os.path.join(os.environ.get("RESULTS_DIR", "/app/out"), "bbs_metrics.json"))
         except Exception as exc:
-            print(f"[evaluator] metrics not saved: {exc}")
+            print(f"[evaluator] metrics not saved: {exc}")"""
 
     def save_metrics_json(self, filename: "str | Path") -> None:
         from leaderboard.state_estimation.bbs_metrics_export import export_metrics
