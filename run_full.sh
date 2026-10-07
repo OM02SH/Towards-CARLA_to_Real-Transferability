@@ -2,16 +2,8 @@
 export CARLA_ROOT=/home/omar-shaat/carla_0.9.15
 export LEADERBOARD_ROOT=/home/omar-shaat/thesis_final/leaderboard
 export SCENARIO_RUNNER_ROOT=/home/omar-shaat/thesis_final/scenario_runner
-export PORT=2000
-export TM_PORT=8000
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,garbage_collection_threshold:0.8,max_split_size_mb:128
 export CUDA_VISIBLE_DEVICES=0
-echo "Starting CARLA Simulator..."
-
-${CARLA_ROOT}/CarlaUE4.sh -carla-rpc-port=${PORT} -quality-level=Epic -RenderOffScreen &
-CARLA_PID=$!
-
-sleep 15 
 
 export PYTHONPATH="${CARLA_ROOT}/PythonAPI/carla/":"${SCENARIO_RUNNER_ROOT}":"${LEADERBOARD_ROOT}":${PYTHONPATH}
 export IS_BENCH2DRIVE=True 
@@ -45,4 +37,3 @@ python3 -m leaderboard.leaderboard_evaluator \
   --port=${PORT}
 
 echo "Evaluation sequence ended. Stopping CARLA..."
-kill $CARLA_PID
