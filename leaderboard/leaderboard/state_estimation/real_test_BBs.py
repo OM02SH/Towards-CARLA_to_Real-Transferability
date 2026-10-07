@@ -684,9 +684,6 @@ class OnlineEvaluator:
         # env var wins, so the path can be set from `docker run -e BBS_GHOST_CSV=/some/mounted/dir/bbs_ghosts.csv`
         self.ghost_csv = os.environ.get("BBS_GHOST_CSV") or ghost_csv
         self._ghost_path_announced = False
-        self.metrics_json = os.environ.get("BBS_METRICS_JSON") or metrics_json or (
-            os.path.join(os.path.dirname(os.path.abspath(self.ghost_csv)), "bbs_metrics.json") if self.ghost_csv else None)
-        self.extra_meta: Dict[str, object] = {}
         self.probe_ghosts = probe_ghosts            # ask the live CARLA world what stands under each ghost
         self.probe_radius = probe_radius
         self.probe_refresh = probe_refresh          # frames between environment-object cache refreshes
