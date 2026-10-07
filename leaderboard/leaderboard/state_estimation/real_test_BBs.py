@@ -684,6 +684,9 @@ class OnlineEvaluator:
         # env var wins, so the path can be set from `docker run -e BBS_GHOST_CSV=/some/mounted/dir/bbs_ghosts.csv`
         self.ghost_csv = os.environ.get("BBS_GHOST_CSV") or ghost_csv
         self._ghost_path_announced = False
+        self.metrics_json = os.environ.get("BBS_METRICS_JSON") or metrics_json or (
+            os.path.join(os.path.dirname(os.path.abspath(self.ghost_csv)), "bbs_metrics.json") if self.ghost_csv else None)
+        self.extra_meta: Dict[str, object] = {}
         self.probe_ghosts = probe_ghosts            # ask the live CARLA world what stands under each ghost
         self.probe_radius = probe_radius
         self.probe_refresh = probe_refresh          # frames between environment-object cache refreshes
@@ -858,18 +861,12 @@ class OnlineEvaluator:
 
     def print_report(self) -> None:
         print_results(self.evaluate())
-        d = self.diagnose()
-        print_diagnostics(d)
-        if self.ghost_csv:
-            try:
-                os.makedirs(os.path.dirname(os.path.abspath(self.ghost_csv)), exist_ok=True)
-                self.save_ghosts_csv(d["ghost_rows"], self.ghost_csv)
-                if not self._ghost_path_announced:
-                    print(f"[evaluator] ghost CSV is written to {os.path.abspath(self.ghost_csv)} "
-                          f"(must be inside a mounted volume to survive the container)")
-                    self._ghost_path_announced = True
-            except Exception as exc:
-                print(f"[evaluator] could not write ghost CSV to {self.ghost_csv}: {exc}")
+        print_diagnostics(self.diagnose())
+        try:
+            self.save_metrics_json(os.path.join(os.environ.get("RESULTS_DIR", "/app/out"), "bbs_metrics.json"))
+        except Exception as exc:
+            print(f"[evaluator] metrics not saved: {exc}")
 
     def save_metrics_json(self, filename: "str | Path") -> None:
-        save_metrics(self.evaluate(), Path(filename))
+        from leaderboard.state_estimation.bbs_metrics_export import export_metrics
+        export_metrics(self, str(filename))
