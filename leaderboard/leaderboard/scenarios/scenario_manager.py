@@ -91,7 +91,7 @@ class ScenarioManager(object):
         # Use the callback_id inside the signal handler to allow external interrupts
         signal.signal(signal.SIGINT, self.signal_handler)
         self.pcla = None
-        self.counter = 0
+        self.counter = 7
 
     def signal_handler(self, signum, frame):
         """
