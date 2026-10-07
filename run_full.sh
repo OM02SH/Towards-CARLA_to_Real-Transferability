@@ -41,8 +41,7 @@ python3 -m leaderboard.leaderboard_evaluator \
   --debug=${DEBUG_CHALLENGE} \
   --record=${RECORD_PATH} \
   --resume=${RESUME} \
-  --port=${PORT} \
-  --trafficManagerPort=${TM_PORT}
+  --port=${PORT}
 
 echo "Evaluation sequence ended. Stopping CARLA..."
 kill $CARLA_PID
