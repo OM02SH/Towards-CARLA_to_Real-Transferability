@@ -36,7 +36,7 @@ from leaderboard.state_estimation.real_test_BBs import OnlineEvaluator
 from leaderboard.state_estimation.real_test_ego import EgoStateOnlineEvaluator
 from pathlib import Path
 from leaderboard.state_estimation.shadow_criteria import ShadowCriteria
-out_dir = Path("/home/omar-shaat/thesis_final/out")
+out_dir = Path("/app/out")
 out_dir.mkdir(parents=True, exist_ok=True)
 
 class ScenarioManager(object):
@@ -91,7 +91,7 @@ class ScenarioManager(object):
         # Use the callback_id inside the signal handler to allow external interrupts
         signal.signal(signal.SIGINT, self.signal_handler)
         self.pcla = None
-        self.counter = 7
+        self.counter = 38
 
     def signal_handler(self, signum, frame):
         """

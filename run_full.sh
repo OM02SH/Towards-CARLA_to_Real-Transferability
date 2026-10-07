@@ -1,11 +1,8 @@
-#!/bin/bash
-export CARLA_ROOT=/home/omar-shaat/carla_0.9.15
-export LEADERBOARD_ROOT=/home/omar-shaat/thesis_final/leaderboard
-export SCENARIO_RUNNER_ROOT=/home/omar-shaat/thesis_final/scenario_runner
+export LEADERBOARD_ROOT=/app/leaderboard
+export SCENARIO_RUNNER_ROOT=/app/scenario_runner
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,garbage_collection_threshold:0.8,max_split_size_mb:128
-export CUDA_VISIBLE_DEVICES=0
 export PORT=2000
-export PYTHONPATH="${CARLA_ROOT}/PythonAPI/carla/":"${SCENARIO_RUNNER_ROOT}":"${LEADERBOARD_ROOT}":${PYTHONPATH}
+export PYTHONPATH="app/PythonAPI/carla/":"${SCENARIO_RUNNER_ROOT}":"${LEADERBOARD_ROOT}":${PYTHONPATH}
 export IS_BENCH2DRIVE=True 
 export CLEAR_LANE=1
 export ROUTES=$LEADERBOARD_ROOT/data/bench2drive220.xml
