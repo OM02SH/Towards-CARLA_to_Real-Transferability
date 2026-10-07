@@ -309,19 +309,32 @@ class ScenarioManager(object):
             if self.scenario is not None:
                 self.scenario.terminate()
 
-            """if self._agent_wrapper is not None:
-                self._agent_wrapper.cleanup()
-                self._agent_wrapper = None"""
             if self.pcla is not None:
                 self.pcla.cleanup()
                 self.pcla = None 
 
             self.analyze_scenario()
 
+        if hasattr(self, 'sensor_suite') and self.sensor_suite is not None:
+            try:
+                if hasattr(self.sensor_suite, 'destroy'):
+                    self.sensor_suite.destroy()
+                elif hasattr(self.sensor_suite, 'cleanup'):
+                    self.sensor_suite.cleanup()
+            except Exception as e:
+                print(f"Error cleaning up sensor suite: {e}")
+            self.sensor_suite = None
+
+        if hasattr(self, 'state_from_sensors') and self.state_from_sensors is not None:
+            self.state_from_sensors = None
+
+        # --------------------------------------------
+
         # Make sure the scenario thread finishes to avoid blocks
         self._running = False
-        self._scenario_thread.join(timeout=2.0)
-        self._scenario_thread = None
+        if self._scenario_thread is not None:
+            self._scenario_thread.join(timeout=2.0)
+            self._scenario_thread = None
 
     def compute_duration_time(self):
         """
