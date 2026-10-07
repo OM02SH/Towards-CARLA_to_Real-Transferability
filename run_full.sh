@@ -7,9 +7,8 @@ export TM_PORT=8000
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,garbage_collection_threshold:0.8,max_split_size_mb:128
 export CUDA_VISIBLE_DEVICES=0
 echo "Starting CARLA Simulator..."
-export SDL_VIDEODRIVER=offscreen  
 
-${CARLA_ROOT}/CarlaUE4.sh -vulkan -carla-rpc-port=${PORT} -quality-level=Epic -RenderOffScreen &
+${CARLA_ROOT}/CarlaUE4.sh -carla-rpc-port=${PORT} -quality-level=Epic -RenderOffScreen &
 CARLA_PID=$!
 
 sleep 15 
