@@ -229,7 +229,7 @@ class ScenarioManager(object):
                 self._agent_watchdog.update()
                 # ego_action = self._agent_wrapper()
                 ego_action = self.pcla.get_action()
-                print("action")
+                #print("action")
                 """if self.tick_count!=0 and self.tick_count/10 == 0:
                     lidar_points_ego = self.QALidar.get_points_ego_frame()
                     (combined_qas, num_questions, num_objects, num_questions_per_category,
