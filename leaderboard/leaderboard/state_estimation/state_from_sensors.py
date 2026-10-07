@@ -132,11 +132,7 @@ class CarlaStateEstimatorEngine:
         state = CalculatedState()
         perp_state = CalculatedState()
         self.speed_limit = vehicle.get_speed_limit()
-        rec = SensorRecorder(self.geo_ref)
-        wheel = EgoErrorStateEKF3D.get_simulated_speedometer(vehicle)   
-        state.ego_state = self.ekf.compute(dt, vehicle, imu_data, gnss_data, lidar_data_slam, step, wheel_speed=wheel, )
-        rec.add(step, dt, imu_data, gnss_data, lidar_data_slam is not None, wheel, vehicle)
-        rec.save(f"ekf_routes/route_{step}.npz", self.ekf) 
+        state.ego_state = self.ekf.compute(dt, vehicle, imu_data, gnss_data, lidar_data_slam, step)
         if step > 50: self.ego_evaluator.add_frame(frame_id=str(step),ego_state=self.state.ego_state)
         if (step+1) % 100 == 0: 
             self.ekf.nis_summary()

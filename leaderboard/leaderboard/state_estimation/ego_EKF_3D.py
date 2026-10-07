@@ -652,7 +652,7 @@ class EgoErrorStateEKF3D:
         self.prev_state = state
         return state
 
-    def compute(self, dt: float, vehicle, imu_data, gnss_data, lidar_data, step, wheel_speed=UNSET) -> Ego3DState:
+    def compute(self, dt: float, vehicle, imu_data, gnss_data, lidar_data, step) -> Ego3DState:
         self.t += dt
         self.dt = dt
         accel_raw, gyro_raw = self.carla_imu_to_body(imu_data)
@@ -670,7 +670,7 @@ class EgoErrorStateEKF3D:
         if imu_data is not None:
             self.update_compass(imu_data)
 
-        ss = (self.get_simulated_speedometer(vehicle, rng=self._rng) if wheel_speed is UNSET else wheel_speed)
+        ss = self.get_simulated_speedometer(vehicle, rng=self._rng)
         self.last_wheel_speed = ss
         self.update_wheel(ss)
 

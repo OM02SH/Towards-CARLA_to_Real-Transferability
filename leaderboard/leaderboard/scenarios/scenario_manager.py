@@ -197,9 +197,9 @@ class ScenarioManager(object):
             self._tick_scenario()
             self.sensor_criteria.update()
         #print("saving metrics")
-        self.ego_evaluator.save_metrics_json(f"/app/out/ego_{Path(map.name).name}_{self.counter}.json")
-        self.bbs_evaluator.save_metrics_json(f"/app/out/bbs_{Path(map.name).name}_{self.counter}.json")
-        self.sensor_criteria.save_json(f"/app/out/criteria_{Path(map.name).name}_{self.counter}.json")
+        self.ego_evaluator.save_metrics_json(f"/out/ego_{Path(map.name).name}_{self.counter}.json")
+        self.bbs_evaluator.save_metrics_json(f"/out/bbs_{Path(map.name).name}_{self.counter}.json")
+        self.sensor_criteria.save_json(f"/out/criteria_{Path(map.name).name}_{self.counter}.json")
         self.counter += 1 
 
     def _tick_scenario(self):
