@@ -116,7 +116,13 @@ class ScenarioManager(object):
         self._spectator = None
         self._watchdog = None
         self._agent_watchdog = None
-
+        
+        self.sensor_suite = None
+        self.parser = None
+        self.bbs_evaluator = None
+        self.ego_evaluator = None
+        self.state_from_sensors = None
+        self.sensor_criteria = None
         """if self.QALidar:
             self.QALidar.destroy()
             self.QALidar = None"""
