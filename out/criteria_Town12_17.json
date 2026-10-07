@@ -1,0 +1,156 @@
+{
+  "n_ticks": 587,
+  "n_ticks_no_state": 0,
+  "build_failed": [],
+  "criteria": [
+    {
+      "name": "OnSidewalkTest",
+      "status": "SUCCESS",
+      "n_updates": 587,
+      "actual_value": 0,
+      "success_value": 0,
+      "units": "times",
+      "num_events": 0,
+      "events": [],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "WrongLaneTest",
+      "status": "SUCCESS",
+      "n_updates": 587,
+      "actual_value": 0,
+      "success_value": 0,
+      "units": "times",
+      "num_events": 0,
+      "events": [],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "RouteCompletionTest",
+      "status": "SUCCESS",
+      "n_updates": 587,
+      "actual_value": 100,
+      "success_value": 100,
+      "units": "%",
+      "num_events": 1,
+      "events": [
+        {
+          "type": "TrafficEventType.ROUTE_COMPLETION",
+          "frame": 0,
+          "message": "Agent has completed 100 of the route"
+        }
+      ],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "OutsideRouteLanesTest",
+      "status": "SUCCESS",
+      "n_updates": 587,
+      "actual_value": 0,
+      "success_value": 0,
+      "units": "%",
+      "num_events": 0,
+      "events": [],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "InRouteTest",
+      "status": "SUCCESS",
+      "n_updates": 587,
+      "actual_value": 0,
+      "success_value": 0,
+      "units": null,
+      "num_events": 0,
+      "events": [],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "CollisionTest",
+      "status": "FAILURE",
+      "n_updates": 587,
+      "actual_value": 2,
+      "success_value": 0,
+      "units": "times",
+      "num_events": 2,
+      "events": [
+        {
+          "type": "TrafficEventType.COLLISION_VEHICLE",
+          "frame": 4432,
+          "message": "Agent collided against object with type=TrafficEventType.COLLISION_VEHICLE at (x=219.9, y=3809.785, z=363.469)"
+        },
+        {
+          "type": "TrafficEventType.COLLISION_VEHICLE",
+          "frame": 4454,
+          "message": "Agent collided against object with type=TrafficEventType.COLLISION_VEHICLE at (x=211.165, y=3809.806, z=363.544)"
+        }
+      ],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "RunningRedLightTest",
+      "status": "SUCCESS",
+      "n_updates": 587,
+      "actual_value": 0,
+      "success_value": 0,
+      "units": "times",
+      "num_events": 0,
+      "events": [],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "RunningStopTest",
+      "status": "SUCCESS",
+      "n_updates": 587,
+      "actual_value": 0,
+      "success_value": 0,
+      "units": "times",
+      "num_events": 0,
+      "events": [],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "MinSpeedTest",
+      "status": "FAILURE",
+      "n_updates": 587,
+      "actual_value": 183.21,
+      "success_value": 100,
+      "units": "%",
+      "num_events": 4,
+      "events": [
+        {
+          "type": "TrafficEventType.MIN_SPEED_INFRACTION",
+          "frame": 4228,
+          "message": "Average speed is 90.23% of the surrounding traffic's one"
+        },
+        {
+          "type": "TrafficEventType.MIN_SPEED_INFRACTION",
+          "frame": 4294,
+          "message": "Average speed is 314.07% of the surrounding traffic's one"
+        },
+        {
+          "type": "TrafficEventType.MIN_SPEED_INFRACTION",
+          "frame": 4418,
+          "message": "Average speed is 104.43% of the surrounding traffic's one"
+        },
+        {
+          "type": "TrafficEventType.MIN_SPEED_INFRACTION",
+          "frame": 4459,
+          "message": "Average speed is 224.12% of the surrounding traffic's one"
+        }
+      ],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "AgentBlockedTest",
+      "status": "SUCCESS",
+      "n_updates": 587,
+      "actual_value": 0,
+      "success_value": 0,
+      "units": null,
+      "num_events": 0,
+      "events": [],
+      "disabled_after_errors": false
+    }
+  ],
+  "errors": {}
+}

@@ -1,0 +1,142 @@
+{
+  "n_ticks": 379,
+  "n_ticks_no_state": 0,
+  "build_failed": [],
+  "criteria": [
+    {
+      "name": "OnSidewalkTest",
+      "status": "SUCCESS",
+      "n_updates": 379,
+      "actual_value": 0,
+      "success_value": 0,
+      "units": "times",
+      "num_events": 0,
+      "events": [],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "WrongLaneTest",
+      "status": "FAILURE",
+      "n_updates": 379,
+      "actual_value": 1,
+      "success_value": 0,
+      "units": "times",
+      "num_events": 1,
+      "events": [
+        {
+          "type": "TrafficEventType.WRONG_WAY_INFRACTION",
+          "frame": 12954,
+          "message": "Agent invaded a lane in opposite direction for 21.509 meters, starting at (x=1174.931, y=5207.727, z=371.228). road_id=467, lane_id=-1"
+        }
+      ],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "RouteCompletionTest",
+      "status": "FAILURE",
+      "n_updates": 379,
+      "actual_value": 50.02,
+      "success_value": 100,
+      "units": "%",
+      "num_events": 1,
+      "events": [
+        {
+          "type": "TrafficEventType.ROUTE_COMPLETION",
+          "frame": 0,
+          "message": "Agent has completed 50.02 of the route"
+        }
+      ],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "OutsideRouteLanesTest",
+      "status": "FAILURE",
+      "n_updates": 379,
+      "actual_value": 30.28,
+      "success_value": 0,
+      "units": "%",
+      "num_events": 1,
+      "events": [
+        {
+          "type": "TrafficEventType.OUTSIDE_ROUTE_LANES_INFRACTION",
+          "frame": 12946,
+          "message": "Agent went outside its route lanes for about 20.0 meters (30.28% of the completed route)"
+        }
+      ],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "InRouteTest",
+      "status": "SUCCESS",
+      "n_updates": 379,
+      "actual_value": 0,
+      "success_value": 0,
+      "units": null,
+      "num_events": 0,
+      "events": [],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "CollisionTest",
+      "status": "SUCCESS",
+      "n_updates": 379,
+      "actual_value": 0,
+      "success_value": 0,
+      "units": "times",
+      "num_events": 0,
+      "events": [],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "RunningRedLightTest",
+      "status": "SUCCESS",
+      "n_updates": 379,
+      "actual_value": 0,
+      "success_value": 0,
+      "units": "times",
+      "num_events": 0,
+      "events": [],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "RunningStopTest",
+      "status": "SUCCESS",
+      "n_updates": 379,
+      "actual_value": 0,
+      "success_value": 0,
+      "units": "times",
+      "num_events": 0,
+      "events": [],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "MinSpeedTest",
+      "status": "FAILURE",
+      "n_updates": 379,
+      "actual_value": 146.39,
+      "success_value": 100,
+      "units": "%",
+      "num_events": 1,
+      "events": [
+        {
+          "type": "TrafficEventType.MIN_SPEED_INFRACTION",
+          "frame": 12709,
+          "message": "Average speed is 146.39% of the surrounding traffic's one"
+        }
+      ],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "AgentBlockedTest",
+      "status": "SUCCESS",
+      "n_updates": 379,
+      "actual_value": 0,
+      "success_value": 0,
+      "units": null,
+      "num_events": 0,
+      "events": [],
+      "disabled_after_errors": false
+    }
+  ],
+  "errors": {}
+}

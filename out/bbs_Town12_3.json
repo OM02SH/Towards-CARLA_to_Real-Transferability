@@ -1,0 +1,640 @@
+{
+  "meta": {
+    "created": "2026-10-07T12:50:32+02:00",
+    "python": "3.10.12",
+    "numpy": "2.2.5",
+    "frames_seen_including_warmup": 540,
+    "frames_evaluated": 500,
+    "ego_speed_m_s": {
+      "mean": 4.586303283782216,
+      "max": 11.589490572701965,
+      "fraction_below_0.5": 0.242
+    },
+    "evaluator": {
+      "thresholds_m": [
+        0.5,
+        1.0,
+        2.0,
+        4.0
+      ],
+      "tp_threshold_m": 2.0,
+      "max_range_m": 50,
+      "warmup_frames": 40,
+      "stationary_stride": 1,
+      "ghost_probe": true,
+      "ghost_probe_radius_m": 3.0
+    },
+    "ground_truth": {
+      "actor_max_range_m": 50.0,
+      "static_max_range_m": 50.0,
+      "min_points_for_visibility": 5,
+      "visibility_margin_m": 0.2,
+      "include_mesh_props": "always on in this version",
+      "canonical_props": "always on in this version",
+      "num_static_env_vehicles": 0
+    },
+    "constants": {
+      "hyperparams": {
+        "G": 9.81,
+        "EARTH_RADIUS_EQUA": 6378137.0,
+        "SIGMA_GNSS_XY": 0.1,
+        "SIGMA_GNSS_Z": 0.25,
+        "SIGMA_COMPASS": 0.03490658503988659,
+        "SIGMA_WHEEL_LONG": 0.08,
+        "SIGMA_WHEEL_LAT": 0.1,
+        "SIGMA_GRAVITY_DIRECTION": 0.1,
+        "SIGMA_GNSS_VEL": 1.5,
+        "SIGMA_GYRO": 0.008726646259971648,
+        "SIGMA_ACCEL": 2,
+        "SIGMA_GYRO_BIAS_RW": 0.00017453292519943296,
+        "SIGMA_ACCEL_BIAS_RW": 0.03,
+        "SIGMA_WHEEL_SCALE_RW": 0.001,
+        "SIGMA_WHEEL_SCALE_P0": 0.05,
+        "GRAVITY_NORM_TOL": 0.5,
+        "GRAVITY_UPDATE_MAX_SPEED": 3,
+        "GRAVITY_DYNAMIC_SCALE": 4.0,
+        "ACCEL_CLIP": 40.0,
+        "GYRO_CLIP_RAD": 1.7453292519943295,
+        "ACCEL_SPIKE_THRESH": 5.0,
+        "GYRO_SPIKE_THRESH": 1.0,
+        "USE_ZUPT": true,
+        "ZUPT_WINDOW": 10,
+        "ZUPT_ACCEL_VAR": 0.05,
+        "ZUPT_GYRO_MAX": 0.03,
+        "ZUPT_WHEEL_MAX": 0.05,
+        "ZUPT_FILTER_SPEED_MAX": 0.3,
+        "SIGMA_ZUPT_VEL": 0.02,
+        "SIGMA_ZUPT_GYRO": 0.017453292519943295,
+        "SPEEDO_NOISE_STD": 0.05,
+        "SPEEDO_QUANT": 0.03,
+        "SPEEDO_SCALE_ERR": 0.01,
+        "SPEEDO_DROPOUT": 0.01,
+        "USE_GNSS_VELOCITY": false,
+        "MAX_HISTORY": 20,
+        "MIN_HISTORY": 5,
+        "MAX_R_SCALE": 50.0,
+        "GATE_MAX_CONSEC_REJECT": 10,
+        "HISTORY_LEN": 600,
+        "ACCEL_OUT_LPF_TAU": 0.15,
+        "OUT_YAW_RATE_SIGN": -1.0,
+        "OUT_Z_SIGN": 1.0,
+        "SLAM_FUSION_MODE": "relative",
+        "SLAM_SYNCHRONOUS": true,
+        "SLAM_REL_MIN_DT": 0.3,
+        "SLAM_REL_MAX_DT": 1.5,
+        "SIGMA_SLAM_REL_POS": 0.01,
+        "SIGMA_SLAM_REL_ROT": 0.0017453292519943296,
+        "SLAM_REL_VEL_FLOOR": 0.05,
+        "SLAM_REL_GYRO_FLOOR": 0.01,
+        "SLAM_INFO_COND_CAP": 100.0,
+        "SLAM_ABS_TILT_Z": true,
+        "SIGMA_SLAM_TILT": 0.017453292519943295,
+        "SIGMA_SLAM_Z": 0.3,
+        "SIGMA_SLAM_POS": 0.3,
+        "SIGMA_SLAM_ATT": 0.03490658503988659,
+        "SELF_HIT_RANGE": 0.3,
+        "MAX_SENSOR_RANGE": 80.0,
+        "TRACK_FITNESS_MIN": 0.35,
+        "TRACK_RMSE_MAX": 0.4,
+        "TRACK_CORR_DIST": 1.0,
+        "EDGE_CORR_DIST_COARSE": 3.0,
+        "EDGE_CORR_DIST_FINE": 0.5,
+        "KEYFRAME_TRANSLATION_M": 3.0,
+        "KEYFRAME_ROTATION_DEG": 8.0,
+        "LOOP_SEARCH_RADIUS_M": 15.0,
+        "LOOP_MIN_KEYFRAME_GAP": 8,
+        "LOOP_FITNESS_MIN": 0.45,
+        "LOOP_RMSE_MAX": 0.3,
+        "GLOBAL_OPT_EDGE_PRUNE_THRESHOLD": 0.25,
+        "SUBMAP_KEYFRAMES": 3,
+        "ICP_ROBUST_K": 0.3,
+        "DYNAMIC_BOX_MARGIN": 0.3,
+        "SRC_W": 1408,
+        "SRC_H": 376,
+        "FOV_DEG": 103.744808,
+        "OUT_W": 704,
+        "OUT_H": 192,
+        "GROUND_CLEARANCE": 0.3,
+        "MAX_LOCKBACK": 50.0,
+        "MAX_LOOKFORWARD": 50.0,
+        "MAX_LOOKSIDEWAYS": 50.0,
+        "MAX_DISTANCE_BETWEEN_LIDAR_POINTS": 0.4,
+        "MIN_NUMBER_LIDAR_HITS": 10,
+        "MIN_VALID_RANGE_M": 0.5,
+        "DEFAULT_EGO_HALF_HEIGHT": 0.9,
+        "ROAD_EXIT_LOOKAHEAD_S": 0.05,
+        "ROAD_EXIT_STEP_S": 0.05,
+        "OPENPCDET_CFG_FILE": "/home/omar-shaat/thesis_final/leaderboard/leaderboard/state_estimation/bevfusion_carlaocc.yaml",
+        "OPENPCDET_CKPT_FILE": "/home/omar-shaat/thesis_final/leaderboard/leaderboard/state_estimation/bevfusion.pth",
+        "OPENPCDET_TOOLS_DIR": "/home/omar-shaat/thesis_final/leaderboard/leaderboard/state_estimation/../../../pcdet",
+        "OPENPCDET_DEVICE": "cuda",
+        "OPENPCDET_SCORE_THRESH": 0.3,
+        "OPENPCDET_BOX_MARGIN_M": 0.3,
+        "POSITION_STD": 1,
+        "Z_STD": 0.2,
+        "YAW_STD": 0.17453292519943295,
+        "ACCEL_STD": 2.0,
+        "YAW_RATE_STD": 0.3490658503988659,
+        "L_STD": 0.1,
+        "W_STD": 0.1,
+        "H_STD": 0.2,
+        "PROCESS_JERK_STD": 5,
+        "PROCESS_JERK_LAT_SCALE": 1.0,
+        "PROCESS_YAW_ACCEL_STD": 0.3490658503988659,
+        "PROCESS_L_STD": 0.05,
+        "PROCESS_W_STD": 0.05,
+        "PROCESS_Z_STD": 0.05,
+        "PROCESS_H_STD": 0.05,
+        "LIDAR_YAW_STD": 0.08726646259971647,
+        "LIDAR_L_STD": 0.25,
+        "LIDAR_W_STD": 0.25,
+        "LIDAR_Z_STD": 0.15,
+        "LIDAR_H_STD": 0.15,
+        "RADAR_VELOCITY_STD": 0.2,
+        "YAW_ALIGN_MIN_SPEED": 2.0,
+        "RADAR_GATE_PROB": 0.95,
+        "DET_VELOCITY_STD": 3.0,
+        "RADAR_GATE_FLOOR_STD": 1,
+        "DET_VELOCITY_MEAS_STD": 3.0,
+        "STOP_CLASS_ID": 0,
+        "GO_CLASS_ID": 1,
+        "EXPECTED_ASPECT_RATIO": 0.273,
+        "ASPECT_RATIO_TOLERANCE": 0.2,
+        "HOLD_MAX_CALLS": 10,
+        "YOLO_MODEL_PATH": "/home/omar-shaat/thesis_final/leaderboard/leaderboard/state_estimation/best.pt",
+        "DEFAULT_RPE_DELTA_FRAMES": 20,
+        "MOVING_SPEED_THRESHOLD": 1.0,
+        "STATIONARY_SPEED_THRESHOLD": 0.1,
+        "MIN_RPE_SEGMENT": 1.0,
+        "TP_DISTANCE_THRESHOLD": 2.0
+      },
+      "bbs_KF": {
+        "DEBUG_PRINT": false,
+        "FIX_FRAMES": true
+      },
+      "UKF_bb": {
+        "DIM_X": 12,
+        "YAW_IDX": 6,
+        "ACCEL_DECAY_TAU": 1.0
+      }
+    },
+    "extra": {}
+  },
+  "files": {
+    "per_frame_csv": "/home/omar-shaat/thesis_final/out/bbs_Town12_3_frames.csv"
+  },
+  "summary": {
+    "match_threshold_m": 2.0,
+    "precision": 0.9473978735310576,
+    "recall_visible": 0.7124463519313304,
+    "recall_bonus_adjusted": 0.926655719759168,
+    "f1": 0.9369120088544548,
+    "visible_gt": 466,
+    "matched_unseen_gt": 1361,
+    "predictions": 1787,
+    "matched": 1693,
+    "ATE_m": 0.30863459399530874,
+    "ASE_1_minus_iou": 0.25676544806315493,
+    "AOE_rad": 1.160833075570776,
+    "AOE_flip_folded_rad": 0.11001409958113895,
+    "AVE_m_s": 0.7072061117736801,
+    "note": "recall_visible is the headline recall; recall_bonus_adjusted also credits unseen GT that was found"
+  },
+  "confidence_intervals_95": {
+    "method": "block bootstrap, 20-frame blocks, 300 resamples, seed 0",
+    "precision": {
+      "low": 0.9154218047611551,
+      "high": 0.9794528747985987
+    },
+    "recall_visible": {
+      "low": 0.6125819000819,
+      "high": 0.8112726676818096
+    },
+    "ATE_m": {
+      "low": 0.23477145368597935,
+      "high": 0.39687755962468746
+    }
+  },
+  "per_threshold": {
+    "0.5": {
+      "num_gt_visible": 466,
+      "num_matched_unseen": 1081,
+      "num_pred": 1787,
+      "num_matched": 1353,
+      "recall": 0.8745959922430511,
+      "recall_visible": 0.5836909871244635,
+      "precision": 0.7571348628987129,
+      "f1": 0.8116376724655069
+    },
+    "1.0": {
+      "num_gt_visible": 466,
+      "num_matched_unseen": 1282,
+      "num_pred": 1787,
+      "num_matched": 1601,
+      "recall": 0.915903890160183,
+      "recall_visible": 0.6845493562231759,
+      "precision": 0.8959149412423055,
+      "f1": 0.9057991513437058
+    },
+    "2.0": {
+      "num_gt_visible": 466,
+      "num_matched_unseen": 1361,
+      "num_pred": 1787,
+      "num_matched": 1693,
+      "recall": 0.926655719759168,
+      "recall_visible": 0.7124463519313304,
+      "precision": 0.9473978735310576,
+      "f1": 0.9369120088544548
+    },
+    "4.0": {
+      "num_gt_visible": 466,
+      "num_matched_unseen": 1417,
+      "num_pred": 1787,
+      "num_matched": 1754,
+      "recall": 0.9314922995220393,
+      "recall_visible": 0.723175965665236,
+      "precision": 0.9815332960268607,
+      "f1": 0.9558583106267029
+    }
+  },
+  "tp_errors": {
+    "trans_err": 0.30863459399530874,
+    "scale_err": 0.25676544806315493,
+    "orient_err": 1.160833075570776,
+    "orient_fold_err": 0.11001409958113895,
+    "vel_err": 0.7072061117736801
+  },
+  "tp_errors_by_tag": {
+    "car": {
+      "trans_err": 0.30863459399530874,
+      "scale_err": 0.25676544806315493,
+      "orient_err": 1.160833075570776,
+      "vel_err": 0.7072061117736801
+    }
+  },
+  "diagnostics": {
+    "match_threshold_m": 2.0,
+    "by_range": [
+      {
+        "range_m": [
+          0.0,
+          15.0
+        ],
+        "visible_gt": 351,
+        "rec_visible": 0.6809116809116809,
+        "unseen_gt": 355,
+        "unseen_hit_rate": 0.7183098591549296,
+        "predictions": 495,
+        "false_positives": 0,
+        "precision": 1.0
+      },
+      {
+        "range_m": [
+          15.0,
+          30.0
+        ],
+        "visible_gt": 104,
+        "rec_visible": 0.8076923076923077,
+        "unseen_gt": 779,
+        "unseen_hit_rate": 0.865211810012837,
+        "predictions": 795,
+        "false_positives": 51,
+        "precision": 0.9358490566037736
+      },
+      {
+        "range_m": [
+          30.0,
+          50.0
+        ],
+        "visible_gt": 11,
+        "rec_visible": 0.8181818181818182,
+        "unseen_gt": 832,
+        "unseen_hit_rate": 0.5192307692307693,
+        "predictions": 497,
+        "false_positives": 43,
+        "precision": 0.9134808853118712
+      }
+    ],
+    "by_ego_speed": [
+      {
+        "ego_speed_m_s": [
+          0.0,
+          0.5
+        ],
+        "frames": 121,
+        "visible_gt": 104,
+        "rec_visible": 0.4423076923076923,
+        "predictions": 375,
+        "precision": 0.9066666666666666,
+        "ATE_m": 0.2071088447682363
+      },
+      {
+        "ego_speed_m_s": [
+          0.5,
+          3.0
+        ],
+        "frames": 51,
+        "visible_gt": 40,
+        "rec_visible": 0.55,
+        "predictions": 174,
+        "precision": 0.9770114942528736,
+        "ATE_m": 0.3242666758516097
+      },
+      {
+        "ego_speed_m_s": [
+          3.0,
+          null
+        ],
+        "frames": 328,
+        "visible_gt": 322,
+        "rec_visible": 0.8198757763975155,
+        "predictions": 1238,
+        "precision": 0.9555735056542811,
+        "ATE_m": 0.33556722359939456
+      }
+    ],
+    "false_positives": {
+      "total": 94,
+      "duplicate": {
+        "count": 8,
+        "share": 0.0851063829787234
+      },
+      "near_miss": {
+        "count": 58,
+        "share": 0.6170212765957447
+      },
+      "ghost": {
+        "count": 28,
+        "share": 0.2978723404255319
+      }
+    },
+    "ghosts": {
+      "total": 28,
+      "by_type": {
+        "ped-sized (<1.2 m)|static": 22,
+        "vehicle-sized|moving": 3,
+        "vehicle-sized|static": 3
+      },
+      "range_histogram": [
+        {
+          "range_m": [
+            0.0,
+            3.0
+          ],
+          "count": 0,
+          "share": 0.0
+        },
+        {
+          "range_m": [
+            3.0,
+            6.0
+          ],
+          "count": 0,
+          "share": 0.0
+        },
+        {
+          "range_m": [
+            6.0,
+            10.0
+          ],
+          "count": 0,
+          "share": 0.0
+        },
+        {
+          "range_m": [
+            10.0,
+            15.0
+          ],
+          "count": 0,
+          "share": 0.0
+        },
+        {
+          "range_m": [
+            15.0,
+            30.0
+          ],
+          "count": 22,
+          "share": 0.7857142857142857
+        },
+        {
+          "range_m": [
+            30.0,
+            50.0
+          ],
+          "count": 6,
+          "share": 0.21428571428571427
+        }
+      ],
+      "within_3m_of_ego": 0,
+      "top10_world_cells_share": 1.0,
+      "top_world_cells": [
+        {
+          "x_world": 2824.0,
+          "y_world": 4300.0,
+          "count": 22,
+          "frames": 22,
+          "mean_length": 0.373317232401585,
+          "mean_width": 0.373776326455634,
+          "mean_speed": 0.0
+        },
+        {
+          "x_world": 2806.0,
+          "y_world": 4374.0,
+          "count": 2,
+          "frames": 2,
+          "mean_length": 4.851220140161739,
+          "mean_width": 1.829261216312092,
+          "mean_speed": 3.0286005810519008
+        },
+        {
+          "x_world": 2806.0,
+          "y_world": 4376.0,
+          "count": 1,
+          "frames": 1,
+          "mean_length": 4.856359196673542,
+          "mean_width": 1.8295245906393296,
+          "mean_speed": 2.847149045007795
+        },
+        {
+          "x_world": 2806.0,
+          "y_world": 4362.0,
+          "count": 1,
+          "frames": 1,
+          "mean_length": 4.86337287635416,
+          "mean_width": 1.8669054892664199,
+          "mean_speed": 0.25580341143845825
+        },
+        {
+          "x_world": 2804.0,
+          "y_world": 4368.0,
+          "count": 1,
+          "frames": 1,
+          "mean_length": 4.808218586116954,
+          "mean_width": 1.8720797960478617,
+          "mean_speed": 0.0
+        },
+        {
+          "x_world": 2804.0,
+          "y_world": 4372.0,
+          "count": 1,
+          "frames": 1,
+          "mean_length": 4.771420025389308,
+          "mean_width": 1.8909277973262635,
+          "mean_speed": 0.30602759297561233
+        }
+      ],
+      "live_probe": {
+        "probed": 28,
+        "nothing_nearby": 28,
+        "environment_labels": {},
+        "actor_types": {}
+      }
+    },
+    "precision_by_score": [
+      {
+        "score": "0.30-0.40",
+        "predictions": 48,
+        "precision": 0.5,
+        "ghost_share": 0.4583333333333333
+      },
+      {
+        "score": "0.40-0.50",
+        "predictions": 95,
+        "precision": 0.8842105263157894,
+        "ghost_share": 0.031578947368421054
+      },
+      {
+        "score": ">=0.50",
+        "predictions": 1644,
+        "precision": 0.9641119221411192,
+        "ghost_share": 0.0018248175182481751
+      }
+    ],
+    "orientation_non_pedestrian": {
+      "static": {
+        "n": 947,
+        "AOE_raw_rad": 1.8986884240562993,
+        "AOE_flip_folded_rad": 0.15807760720315497,
+        "flipped_over_120deg_pct": 61.87961985216474
+      },
+      "moving": {
+        "n": 746,
+        "AOE_raw_rad": 0.22417219753352377,
+        "AOE_flip_folded_rad": 0.04900050478482642,
+        "flipped_over_120deg_pct": 5.898123324396782
+      }
+    },
+    "recall_by_gt_source": {
+      "vehicle": {
+        "visible_gt": 170,
+        "rec_visible": 0.9411764705882353,
+        "unseen_gt": 774,
+        "unseen_hit_rate": 0.7661498708010336
+      },
+      "prop": {
+        "visible_gt": 296,
+        "rec_visible": 0.581081081081081,
+        "unseen_gt": 1192,
+        "unseen_hit_rate": 0.6442953020134228
+      }
+    },
+    "errors_by_gt_source": {
+      "prop": {
+        "n": 940,
+        "ATE_m": 0.26014459392393935,
+        "ASE": 0.3733243524006627,
+        "AOE_raw_rad": 1.912673373817419,
+        "AOE_fold180_rad": 0.15910056151962387,
+        "AOE_fold90_rad": 0.15910056151962387,
+        "over_57deg_off_pct": 0.0,
+        "flipped_over_120deg_pct": 62.34042553191489
+      },
+      "vehicle": {
+        "n": 753,
+        "ATE_m": 0.3691665993964869,
+        "ASE": 0.11126030851832441,
+        "AOE_raw_rad": 0.2222807776267597,
+        "AOE_fold180_rad": 0.048737506988607994,
+        "AOE_fold90_rad": 0.048737506988607994,
+        "over_57deg_off_pct": 0.0,
+        "flipped_over_120deg_pct": 5.843293492695882
+      }
+    },
+    "velocity": {
+      "static_gt": {
+        "n": 947,
+        "AVE_m_s": 0.28712981313494074,
+        "mean_pred_speed_m_s": 0.2871153030621008,
+        "by_ego_speed": [
+          {
+            "ego_speed_m_s": [
+              0.0,
+              0.5
+            ],
+            "n": 121,
+            "AVE_m_s": 0.14227297071401462
+          },
+          {
+            "ego_speed_m_s": [
+              0.5,
+              3.0
+            ],
+            "n": 85,
+            "AVE_m_s": 0.6104584371731896
+          },
+          {
+            "ego_speed_m_s": [
+              3.0,
+              null
+            ],
+            "n": 741,
+            "AVE_m_s": 0.27369492094827536
+          }
+        ]
+      },
+      "moving_gt": [
+        {
+          "group": "vehicles 0.2-2 m/s",
+          "n": 24,
+          "AVE_m_s": 1.6512468164538106,
+          "gt_speed_m_s": 1.1863912566799375,
+          "track_speed_m_s": 1.5001560841897101,
+          "raw_detector_speed_m_s": 4.054217719832761,
+          "radar_points_per_detection": 17.75,
+          "median_angle_error_deg": 62.587383193784774,
+          "reversed_over_120deg_pct": 45.0
+        },
+        {
+          "group": "vehicles 2-6 m/s",
+          "n": 73,
+          "AVE_m_s": 1.3072114796904755,
+          "gt_speed_m_s": 4.476007227817112,
+          "track_speed_m_s": 4.230128807409156,
+          "raw_detector_speed_m_s": 3.5950986057149756,
+          "radar_points_per_detection": 38.863013698630134,
+          "median_angle_error_deg": 6.404080518787111,
+          "reversed_over_120deg_pct": 0.0
+        },
+        {
+          "group": "vehicles >6 m/s",
+          "n": 649,
+          "AVE_m_s": 1.217768339879438,
+          "gt_speed_m_s": 7.992578123913813,
+          "track_speed_m_s": 7.336937096891052,
+          "raw_detector_speed_m_s": 3.9480660439053024,
+          "radar_points_per_detection": 54.81972265023113,
+          "median_angle_error_deg": 1.4480279926064261,
+          "reversed_over_120deg_pct": 0.0
+        }
+      ],
+      "tracker_velocity_convention_test_moving_vehicles": {
+        "as_is": 1.2404665069625351,
+        "vy_negated": 1.4627101116607462,
+        "vx_negated": 14.15076921457398,
+        "plus_ego_speed_on_x": 4.388904816595434,
+        "minus_ego_speed_on_x": 4.871826739875547,
+        "predict_zero": 7.429497480175646
+      }
+    }
+  }
+}

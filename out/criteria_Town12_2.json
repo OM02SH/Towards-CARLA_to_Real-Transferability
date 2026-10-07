@@ -1,0 +1,168 @@
+{
+  "n_ticks": 718,
+  "n_ticks_no_state": 0,
+  "build_failed": [],
+  "criteria": [
+    {
+      "name": "OnSidewalkTest",
+      "status": "SUCCESS",
+      "n_updates": 718,
+      "actual_value": 0,
+      "success_value": 0,
+      "units": "times",
+      "num_events": 0,
+      "events": [],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "WrongLaneTest",
+      "status": "FAILURE",
+      "n_updates": 718,
+      "actual_value": 1,
+      "success_value": 0,
+      "units": "times",
+      "num_events": 1,
+      "events": [
+        {
+          "type": "TrafficEventType.WRONG_WAY_INFRACTION",
+          "frame": 89292,
+          "message": "Agent invaded a lane in opposite direction for 23.284 meters, starting at (x=1174.835, y=5360.465, z=370.859). road_id=468, lane_id=-1"
+        }
+      ],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "RouteCompletionTest",
+      "status": "SUCCESS",
+      "n_updates": 718,
+      "actual_value": 100,
+      "success_value": 100,
+      "units": "%",
+      "num_events": 1,
+      "events": [
+        {
+          "type": "TrafficEventType.ROUTE_COMPLETION",
+          "frame": 0,
+          "message": "Agent has completed 100 of the route"
+        }
+      ],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "OutsideRouteLanesTest",
+      "status": "FAILURE",
+      "n_updates": 718,
+      "actual_value": 18.17,
+      "success_value": 0,
+      "units": "%",
+      "num_events": 1,
+      "events": [
+        {
+          "type": "TrafficEventType.OUTSIDE_ROUTE_LANES_INFRACTION",
+          "frame": 89496,
+          "message": "Agent went outside its route lanes for about 24.0 meters (18.17% of the completed route)"
+        }
+      ],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "InRouteTest",
+      "status": "SUCCESS",
+      "n_updates": 718,
+      "actual_value": 0,
+      "success_value": 0,
+      "units": null,
+      "num_events": 0,
+      "events": [],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "CollisionTest",
+      "status": "FAILURE",
+      "n_updates": 718,
+      "actual_value": 2,
+      "success_value": 0,
+      "units": "times",
+      "num_events": 2,
+      "events": [
+        {
+          "type": "TrafficEventType.COLLISION_VEHICLE",
+          "frame": 89268,
+          "message": "Agent collided against object with type=TrafficEventType.COLLISION_VEHICLE at (x=1176.764, y=5370.396, z=370.907)"
+        },
+        {
+          "type": "TrafficEventType.COLLISION_VEHICLE",
+          "frame": 89350,
+          "message": "Agent collided against object with type=TrafficEventType.COLLISION_VEHICLE at (x=1173.494, y=5403.555, z=370.797)"
+        }
+      ],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "RunningRedLightTest",
+      "status": "SUCCESS",
+      "n_updates": 718,
+      "actual_value": 0,
+      "success_value": 0,
+      "units": "times",
+      "num_events": 0,
+      "events": [],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "RunningStopTest",
+      "status": "SUCCESS",
+      "n_updates": 718,
+      "actual_value": 0,
+      "success_value": 0,
+      "units": "times",
+      "num_events": 0,
+      "events": [],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "MinSpeedTest",
+      "status": "FAILURE",
+      "n_updates": 718,
+      "actual_value": 339.83,
+      "success_value": 100,
+      "units": "%",
+      "num_events": 4,
+      "events": [
+        {
+          "type": "TrafficEventType.MIN_SPEED_INFRACTION",
+          "frame": 88916,
+          "message": "Average speed is 328.96% of the surrounding traffic's one"
+        },
+        {
+          "type": "TrafficEventType.MIN_SPEED_INFRACTION",
+          "frame": 89299,
+          "message": "Average speed is 66.49% of the surrounding traffic's one"
+        },
+        {
+          "type": "TrafficEventType.MIN_SPEED_INFRACTION",
+          "frame": 89404,
+          "message": "Average speed is 617.38% of the surrounding traffic's one"
+        },
+        {
+          "type": "TrafficEventType.MIN_SPEED_INFRACTION",
+          "frame": 89497,
+          "message": "Average speed is 346.49% of the surrounding traffic's one"
+        }
+      ],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "AgentBlockedTest",
+      "status": "SUCCESS",
+      "n_updates": 718,
+      "actual_value": 0,
+      "success_value": 0,
+      "units": null,
+      "num_events": 0,
+      "events": [],
+      "disabled_after_errors": false
+    }
+  ],
+  "errors": {}
+}

@@ -1,0 +1,157 @@
+{
+  "n_ticks": 590,
+  "n_ticks_no_state": 0,
+  "build_failed": [],
+  "criteria": [
+    {
+      "name": "OnSidewalkTest",
+      "status": "SUCCESS",
+      "n_updates": 590,
+      "actual_value": 0,
+      "success_value": 0,
+      "units": "times",
+      "num_events": 0,
+      "events": [],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "WrongLaneTest",
+      "status": "FAILURE",
+      "n_updates": 590,
+      "actual_value": 1,
+      "success_value": 0,
+      "units": "times",
+      "num_events": 1,
+      "events": [
+        {
+          "type": "TrafficEventType.WRONG_WAY_INFRACTION",
+          "frame": 89907,
+          "message": "Agent invaded a lane in opposite direction for 23.493 meters, starting at (x=2813.26, y=4323.741, z=360.676). road_id=876, lane_id=-1"
+        }
+      ],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "RouteCompletionTest",
+      "status": "SUCCESS",
+      "n_updates": 590,
+      "actual_value": 100,
+      "success_value": 100,
+      "units": "%",
+      "num_events": 1,
+      "events": [
+        {
+          "type": "TrafficEventType.ROUTE_COMPLETION",
+          "frame": 0,
+          "message": "Agent has completed 100 of the route"
+        }
+      ],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "OutsideRouteLanesTest",
+      "status": "FAILURE",
+      "n_updates": 590,
+      "actual_value": 16.65,
+      "success_value": 0,
+      "units": "%",
+      "num_events": 1,
+      "events": [
+        {
+          "type": "TrafficEventType.OUTSIDE_ROUTE_LANES_INFRACTION",
+          "frame": 90106,
+          "message": "Agent went outside its route lanes for about 22.001 meters (16.65% of the completed route)"
+        }
+      ],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "InRouteTest",
+      "status": "SUCCESS",
+      "n_updates": 590,
+      "actual_value": 0,
+      "success_value": 0,
+      "units": null,
+      "num_events": 0,
+      "events": [],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "CollisionTest",
+      "status": "SUCCESS",
+      "n_updates": 590,
+      "actual_value": 0,
+      "success_value": 0,
+      "units": "times",
+      "num_events": 0,
+      "events": [],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "RunningRedLightTest",
+      "status": "SUCCESS",
+      "n_updates": 590,
+      "actual_value": 0,
+      "success_value": 0,
+      "units": "times",
+      "num_events": 0,
+      "events": [],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "RunningStopTest",
+      "status": "SUCCESS",
+      "n_updates": 590,
+      "actual_value": 0,
+      "success_value": 0,
+      "units": "times",
+      "num_events": 0,
+      "events": [],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "MinSpeedTest",
+      "status": "FAILURE",
+      "n_updates": 590,
+      "actual_value": 281.22,
+      "success_value": 100,
+      "units": "%",
+      "num_events": 4,
+      "events": [
+        {
+          "type": "TrafficEventType.MIN_SPEED_INFRACTION",
+          "frame": 89653,
+          "message": "Average speed is 378.2% of the surrounding traffic's one"
+        },
+        {
+          "type": "TrafficEventType.MIN_SPEED_INFRACTION",
+          "frame": 89894,
+          "message": "Average speed is 62.82% of the surrounding traffic's one"
+        },
+        {
+          "type": "TrafficEventType.MIN_SPEED_INFRACTION",
+          "frame": 90015,
+          "message": "Average speed is 276.73% of the surrounding traffic's one"
+        },
+        {
+          "type": "TrafficEventType.MIN_SPEED_INFRACTION",
+          "frame": 90107,
+          "message": "Average speed is 407.11% of the surrounding traffic's one"
+        }
+      ],
+      "disabled_after_errors": false
+    },
+    {
+      "name": "AgentBlockedTest",
+      "status": "SUCCESS",
+      "n_updates": 590,
+      "actual_value": 0,
+      "success_value": 0,
+      "units": null,
+      "num_events": 0,
+      "events": [],
+      "disabled_after_errors": false
+    }
+  ],
+  "errors": {}
+}

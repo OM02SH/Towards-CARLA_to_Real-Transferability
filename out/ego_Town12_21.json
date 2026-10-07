@@ -1,0 +1,420 @@
+{
+  "num_frames": 0,
+  "fields": {
+    "x": {
+      "unit": "m",
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "y": {
+      "unit": "m",
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "z": {
+      "unit": "m",
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "roll_rate": {
+      "unit": "rad/s",
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "pitch_rate": {
+      "unit": "rad/s",
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "yaw_rate": {
+      "unit": "rad/s",
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "vx_body": {
+      "unit": "m/s",
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "vy_body": {
+      "unit": "m/s",
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "vz_body": {
+      "unit": "m/s",
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "speed": {
+      "unit": "m/s",
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "vx_world": {
+      "unit": "m/s",
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "vy_world": {
+      "unit": "m/s",
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "vz_world": {
+      "unit": "m/s",
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "ax_body": {
+      "unit": "m/s^2",
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "ay_body": {
+      "unit": "m/s^2",
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "az_body": {
+      "unit": "m/s^2",
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "long_accel": {
+      "unit": "m/s^2",
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "lat_accel": {
+      "unit": "m/s^2",
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "vert_accel": {
+      "unit": "m/s^2",
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "roll_rad": {
+      "unit": "deg",
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "pitch_rad": {
+      "unit": "deg",
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "yaw_rad": {
+      "unit": "deg",
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    }
+  },
+  "aggregate": {
+    "position_2d": {
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "position_3d": {
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "position_longitudinal": {
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "position_lateral": {
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "attitude_3d": {
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "tilt": {
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "velocity_world_vec": {
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "velocity_body_vec": {
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "angular_rate_vec": {
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "accel_body_vec": {
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "speed_relative_moving": {
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "speed_stationary": {
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "course_angle": {
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "rpe_translation": {
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "rpe_translation_percent": {
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    },
+    "rpe_yaw": {
+      "n": 0,
+      "bias": null,
+      "std": null,
+      "mae": null,
+      "median_abs": null,
+      "rmse": null,
+      "p95_abs": null,
+      "max_abs": null
+    }
+  },
+  "trajectory": {
+    "path_length_m": null,
+    "final_pos_err_2d_m": null,
+    "drift_percent": null,
+    "final_yaw_err_deg": null
+  },
+  "config": {
+    "rpe_delta_frames": 20,
+    "moving_threshold": 1.0,
+    "stationary_threshold": 0.1
+  }
+}
