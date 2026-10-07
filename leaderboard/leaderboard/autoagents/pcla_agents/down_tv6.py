@@ -4,7 +4,7 @@ from huggingface_hub import snapshot_download
 # Target repository and subfolder
 REPO_ID = "MasoudJTehrani/PCLA"
 SUBFOLDER = "transfuserv6_pretrained"
-LOCAL_DIR = "./transfuserv6_pretrained"  # Output directory on your local machine
+LOCAL_DIR = "." 
 
 print(f"Downloading '{SUBFOLDER}' from dataset repo '{REPO_ID}'...")
 
