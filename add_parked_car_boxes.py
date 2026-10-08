@@ -5,7 +5,7 @@
         --poses-dir all_poses \
         --pkl carlaocc_infos_train.pkl carlaocc_infos_val.pkl carlaocc_infos_test.pkl
 
-    Visual QA
+    Visual boxes
     python add_parked_car_boxes.py visualize \
         --pkl carlaocc_infos_train.pkl --token Town05_Opt_Seq02_0622 \
         --dataset-root . --out debug_Town05_0622.png
