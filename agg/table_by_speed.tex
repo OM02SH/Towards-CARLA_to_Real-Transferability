@@ -1,0 +1,15 @@
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+bin & visible\_GT & routes\_with\_visible\_GT & precision & recall\_visible \\
+\midrule
+0-0.5 & 12758 & 29 & 0.954 [0.927, 0.970] & 0.457 [0.386, 0.629] \\
+0.5-3 & 1791 & 29 & 0.914 [0.887, 0.939] & 0.632 [0.551, 0.709] \\
+3-inf & 14534 & 37 & 0.908 [0.886, 0.927] & 0.675 [0.617, 0.735] \\
+\bottomrule
+\end{tabular}
+\caption{Detection metrics stratified by ego speed [m/s].}
+\label{tab:byspeed}
+\end{table}

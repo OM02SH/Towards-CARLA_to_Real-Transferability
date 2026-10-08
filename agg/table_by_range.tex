@@ -1,0 +1,15 @@
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+bin & visible\_GT & routes\_with\_visible\_GT & precision & recall\_visible & unseen\_hit\_rate \\
+\midrule
+0-15 & 9662 & 37 & 0.947 [0.920, 0.967] & 0.878 [0.815, 0.933] & 0.895 [0.838, 0.940] \\
+15-30 & 13821 & 37 & 0.930 [0.902, 0.951] & 0.543 [0.464, 0.633] & 0.557 [0.507, 0.623] \\
+30-50 & 5600 & 36 & 0.863 [0.806, 0.907] & 0.140 [0.066, 0.293] & 0.150 [0.109, 0.209] \\
+\bottomrule
+\end{tabular}
+\caption{Detection metrics stratified by range [m].}
+\label{tab:byrange}
+\end{table}
