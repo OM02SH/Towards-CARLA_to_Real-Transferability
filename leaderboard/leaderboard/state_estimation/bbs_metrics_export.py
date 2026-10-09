@@ -1,12 +1,4 @@
-"""
-bbs_metrics_export.py  -  everything the online evaluator knows, written to disk.
-
-  <name>.json            run configuration, headline numbers, every diagnostics table, 95% confidence intervals
-  <name>_frames.csv      one row per evaluated frame (for plots over time / per-frame distributions)
-
-Put this file next to real_test_BBs.py (leaderboard/state_estimation/). It needs no changes when the
-evaluator or the diagnostics change shape, apart from reading their result dictionaries.
-"""
+"""This file was written by an LLM"""
 from __future__ import annotations
 
 import datetime

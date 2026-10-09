@@ -66,17 +66,6 @@ def _is_visible(box: Box) -> bool:
 def evaluate_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List[Box]],
                     thresholds: Sequence[float] = hp.DIST_THRESHOLDS, tp_threshold: float = hp.TP_DISTANCE_THRESHOLD,
                     max_range: Optional[float] = None, by_tag: bool = True) -> dict:
-    """
-    Visibility-aware scoring. Every GT box is either lidar-visible or not.
-      - A visible GT that is not matched is a MISS: it lowers recall.
-      - An unseen GT (too few lidar points) that is not matched costs nothing.
-      - An unseen GT that IS matched is a bonus: a true positive for precision, and it enters the
-        recall numerator and denominator (so it can only raise recall, never lower it).
-      - A prediction that matches no GT at all is a false positive: it lowers precision.
-    recall    = matched / (visible GT + matched unseen GT)
-    precision = matched / predictions
-    """
-    # tp_threshold has to be one of the evaluated thresholds, otherwise the TP errors are all NaN
     thresholds = sorted(set(float(t) for t in thresholds) | {float(tp_threshold)})
     all_frames = sorted(set(gt_frames) | set(pred_frames))
     per_threshold = {}
@@ -340,8 +329,7 @@ class CarlaGroundTruthExtractor:
 
         return boxes
 
-    def update(self, ego_transform: carla.Transform, frame_id: str,
-                lidar_points_ego: Optional[np.ndarray]) -> List[Box]:
+    def update(self, ego_transform: carla.Transform, frame_id: str, lidar_points_ego: Optional[np.ndarray]) -> List[Box]:
         return (self._actor_boxes(ego_transform, frame_id, lidar_points_ego) +
                  self._static_boxes(ego_transform, frame_id, lidar_points_ego))
 
@@ -400,10 +388,7 @@ def diagnose_frames(gt_frames: Dict[str, List[Box]], pred_frames: Dict[str, List
                     static_speed: float = 0.2, score_edges: Sequence[float] = (0.2, 0.3, 0.4, 0.5),
                     ego_pose: Optional[Dict[str, Tuple[float, float, float]]] = None,
                     ghost_ctx: Optional[Dict[tuple, Tuple[str, str]]] = None) -> dict:
-    """
-        This function was written by a LLM
-        Where do the errors come from? Range, false-positive anatomy, precision vs score, heading flips, velocity.
-    """
+    """This function was written by a LLM"""
     inner = list(range_edges[1:-1])
     nb = len(range_edges) - 1
     score_edges = list(score_edges)
@@ -675,18 +660,17 @@ class OnlineEvaluator:
         self.thresholds = list(thresholds)
         self.tp_threshold = tp_threshold
         self.max_range = max_range
-        self.warmup_frames = warmup_frames      # EKF convergence / radar start / track confirmation
+        self.warmup_frames = warmup_frames      
         self._seen = 0
-        self.stationary_stride = stationary_stride   # >1: keep only every Nth frame while the ego is stopped
+        self.stationary_stride = stationary_stride   
         self._stopped = 0
         self._ego_speed: Dict[str, float] = {}
         self._ego_pose: Dict[str, Tuple[float, float, float]] = {}
-        # env var wins, so the path can be set from `docker run -e BBS_GHOST_CSV=/some/mounted/dir/bbs_ghosts.csv`
         self.ghost_csv = os.environ.get("BBS_GHOST_CSV") or ghost_csv
         self._ghost_path_announced = False
-        self.probe_ghosts = probe_ghosts            # ask the live CARLA world what stands under each ghost
+        self.probe_ghosts = probe_ghosts            
         self.probe_radius = probe_radius
-        self.probe_refresh = probe_refresh          # frames between environment-object cache refreshes
+        self.probe_refresh = probe_refresh          
         self._probe_calls = 0
         self._env_xy = np.zeros((0, 2))
         self._env_info: List[Tuple[str, str]] = []
@@ -704,13 +688,12 @@ class OnlineEvaluator:
         self.lidar_actor = self._find_lidar()
 
     def _find_lidar(self):
-        # the sensors may be spawned after this evaluator is built, so this is retried in add_frame
         for actor in self.world.get_actors().filter('sensor.lidar.ray_cast'):
             if actor.parent and actor.parent.id == self.ego_actor_id:
                 return actor
         return None
 
-    def add_frame(self, frame_id: str, ego_state: Ego3DState, pts_sensor: np.ndarray, track_bbs: List[trackedbb], tracker_is_right_handed: bool = False):
+    def add_frame(self, frame_id: str, ego_state: Ego3DState, pts_sensor: np.ndarray, track_bbs: List[trackedbb]):
         self._seen += 1
         if self._seen <= self.warmup_frames:
             return
@@ -747,13 +730,6 @@ class OnlineEvaluator:
             box = Box.from_trackedbb(pb, frame_id=frame_id)
             for extra in ('score', 'det_speed', 'n_radar', 'det_vx', 'det_vy'):
                 setattr(box, extra, float(getattr(pb, extra, float('nan'))))
-
-            if tracker_is_right_handed:
-                box.translation[1] = -box.translation[1]
-                box.yaw = -box.yaw
-                if np.all(np.isfinite(box.velocity)):
-                    box.velocity[1] = -box.velocity[1]
-
             pred_boxes.append(box)
         pred_boxes = global_boxes_to_ego(pred_boxes, ego_state)
         self._pred_frames[frame_id] = pred_boxes
@@ -859,10 +835,6 @@ class OnlineEvaluator:
     def print_report(self) -> None:
         print_results(self.evaluate())
         print_diagnostics(self.diagnose())
-        """try:
-            self.save_metrics_json(os.path.join(os.environ.get("RESULTS_DIR", "/app/out"), "bbs_metrics.json"))
-        except Exception as exc:
-            print(f"[evaluator] metrics not saved: {exc}")"""
 
     def save_metrics_json(self, filename: "str | Path") -> None:
         from leaderboard.state_estimation.bbs_metrics_export import export_metrics

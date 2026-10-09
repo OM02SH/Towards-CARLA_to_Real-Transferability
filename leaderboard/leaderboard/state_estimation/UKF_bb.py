@@ -528,6 +528,7 @@ class UKFBoundingBoxTracker:
         dt_ahead = max(0.0, (step - self._last_step) * self.dt)
         if dt_ahead > self.max_coast_s:      return []
         return [t.predicted_data(dt_ahead) for t in self.visible_tracks if t.missed_ticks <= self.max_publish_misses]
+    
     def update(self, detections, step: float):
         if self._last_step is not None:
             if step < self._last_step:

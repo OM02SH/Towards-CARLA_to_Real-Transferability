@@ -28,11 +28,6 @@ def _rot_z(deg: float) -> np.ndarray:
     return np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]], dtype=np.float64)
 
 def build_camera_calibration(lidar2ego: np.ndarray = None) -> dict:
-    """
-    lidar2ego: optional 4x4 (right-handed lidar frame -> right-handed ego frame).
-               Only used for 'camera2ego'; identity if omitted.
-    Returns float32 arrays, each of shape (6, 4, 4), in CAM_ORDER.
-    """
     if lidar2ego is None:
         lidar2ego = np.eye(4)
 
@@ -151,7 +146,6 @@ class _SingleFrameDataset(DatasetTemplate):
         }
         return self.prepare_data(data_dict=data_dict)
 
-
 class OpenPCDetDetector:
     def __init__(self, cfg_file: str = hp.OPENPCDET_CFG_FILE, ckpt_file: str = hp.OPENPCDET_CKPT_FILE,
                  device: str = hp.OPENPCDET_DEVICE, openpcdet_tools_dir: str = hp.OPENPCDET_TOOLS_DIR):
@@ -222,12 +216,10 @@ def _match_radar_points(radar_points: np.ndarray, center_x: float, center_y: flo
                                     length, width, height, yaw_deg, margin)
     return candidate_points[inside]
 
-
 def _vertical_overlap(z_a: float, h_a: float, z_b: float, h_b: float) -> bool:
     a_lo, a_hi = z_a - h_a / 2.0, z_a + h_a / 2.0
     b_lo, b_hi = z_b - h_b / 2.0, z_b + h_b / 2.0
     return a_lo <= b_hi and b_lo <= a_hi
-
 
 def time_to_road_departure(carla_map: carla.Map, ego: Ego3DState, dims: np.array, dt: float = hp.ROAD_EXIT_STEP_S,
                            max_time: float = hp.ROAD_EXIT_LOOKAHEAD_S) -> float:
@@ -321,7 +313,6 @@ def run_detection(half_length, half_width, state: CalculatedState, master_cloud:
             ))
     return network_detections, network_static, obstacle_pts
 
-
 def radar_measurement_to_array(radar_data) -> np.ndarray:
     if radar_data is None:
         return np.empty((0, 4), dtype=np.float32)
@@ -329,7 +320,6 @@ def radar_measurement_to_array(radar_data) -> np.ndarray:
         return radar_data.astype(np.float32).reshape(-1, 4)
     arr = np.array([[d.depth, d.azimuth, d.altitude, d.velocity] for d in radar_data], dtype=np.float32)
     return arr.reshape(-1, 4)
-
 
 def process_radar(state: CalculatedState, radar_arr: np.ndarray, sensor_transform: np.ndarray) -> np.ndarray:
     if GameTime.get_time() < 0.5 or radar_arr.shape[0] == 0:
@@ -365,10 +355,8 @@ def detect_from_sensors(state: CalculatedState, lidar_stream, radar_streams, cam
     return run_detection(half_length, half_width, state, pts_sensor, radar_points, cameras, step,
                          detector, lidar_offset)
 
-
 def compute_ttcs(tracked, state: CalculatedState, carla_map: carla.Map, half_length, half_width,
                  half_height: float = hp.DEFAULT_EGO_HALF_HEIGHT):
-    """Runs in the main thread every step, against the CURRENT ego state and extrapolated tracks."""
     if state.ego_state.speed > 1e-3:
         hx = state.ego_state.vx_world / state.ego_state.speed
         hy = state.ego_state.vy_world / state.ego_state.speed
@@ -410,67 +398,6 @@ def compute_ttcs(tracked, state: CalculatedState, carla_map: carla.Map, half_len
                     vx=0.0, vy=0.0, speed=0.0, acceleration=0.0, ax=0.0, ay=0.0,
                     yaw=0, yaw_rate=0.0, len=0, wid= 0,
                     z=0, height=0, score= 0, pos_history=[], slip_angle_deg=0.0))
-
-"""def get_lidar_radar_info(state: CalculatedState, lidar_stream, radar_streams, cameras, step,
-                         radar_transforms, half_length, half_width, tracker, carla_map: carla.Map,
-                         detector: OpenPCDetDetector, half_height: float = hp.DEFAULT_EGO_HALF_HEIGHT,
-                         lidar_offset: np.ndarray = None):
-    radar_points = np.empty((0, 7), dtype=np.float32)
-    for sensor_name, radar_arr in radar_streams.items():
-        radar_points = np.vstack([radar_points, process_radar(state, radar_arr, radar_transforms[sensor_name])])
-
-    pts_sensor = np.asarray(lidar_stream, dtype=np.float32).reshape(-1, 4)
-    ranges = np.linalg.norm(pts_sensor[:, :3], axis=1)
-    pts_sensor = pts_sensor[ranges > hp.MIN_VALID_RANGE_M]
-    pts_sensor[:, 1] = -pts_sensor[:, 1]          # CARLA (left-handed) -> right-handed, y left
-
-    tracked, pts = build_bbs(half_length=half_length, half_width=half_width,
-                             state=state, master_cloud=pts_sensor, radar_points=radar_points,
-                             cameras=cameras, step=step, tracker=tracker, detector=detector,
-                             lidar_offset=lidar_offset)
-
-    if state.ego_state.speed > 1e-3:
-        hx = state.ego_state.vx_world / state.ego_state.speed
-        hy = state.ego_state.vy_world / state.ego_state.speed
-    else:
-        hx = math.cos(state.ego_state.yaw)
-        hy = math.sin(state.ego_state.yaw)
-    ego_ttc = np.array([state.ego_state.x, state.ego_state.y, state.ego_state.vx_world,
-                        state.ego_state.vy_world, hx, hy, half_length * 2, half_width * 2])
-
-    obs_ttc = []
-    for track in tracked:
-        if track.moveable:
-            if track.speed > 1e-3:
-                hx = track.vx / track.speed
-                hy = track.vy / track.speed
-            else:
-                hx = math.cos(track.yaw)
-                hy = math.sin(track.yaw)
-        else:
-            hx = math.cos(track.yaw)
-            hy = math.sin(track.yaw)
-        obs_ttc.append((track.px, track.py, track.vx, track.vy, hx, hy, track.len, track.wid))
-
-    if len(obs_ttc) > 0:
-        obs_ttc = np.array(obs_ttc)
-        ttcs = TTC(ego_ttc, obs_ttc)
-
-        ego_z_center = state.ego_state.z + half_height
-        ego_h = half_height * 2.0
-        for i, track in enumerate(tracked):
-            if ttcs[i] == -1 and not _vertical_overlap(ego_z_center, ego_h, track.z, track.height):
-                ttcs[i] = 0.0
-    else:
-        ttcs = np.array([])
-
-    road_exit_ttc = time_to_road_departure(carla_map, state.ego_state,
-                                           np.array([half_length * 2, half_width * 2, half_height * 2]))
-    ttcs = np.append(ttcs, road_exit_ttc)
-    min_ttc = float(np.min(ttcs))
-
-    return tracked, ttcs, min_ttc, pts
-"""
 
 class BBsWorker(threading.Thread):
     """

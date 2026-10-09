@@ -1,12 +1,3 @@
-"""
-What is actually standing where the evaluator reports 'ghost' predictions?
-
-1. Run a route; the evaluator writes bbs_ghosts.csv (ghost predictions with world positions).
-2. With the CARLA server still up (same map loaded), run:
-       python inspect_ghosts.py bbs_ghosts.csv --host localhost --port 2000 --top 10 --radius 4
-   It lists the busiest 2 m world cells and every environment object / actor near each of them.
-   --no-carla only prints the cells (no server needed).
-"""
 import argparse
 import collections
 import csv

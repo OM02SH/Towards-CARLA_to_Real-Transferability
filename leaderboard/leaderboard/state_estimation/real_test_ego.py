@@ -12,7 +12,6 @@ import leaderboard.state_estimation.hyperparams as hp
 
 
 def wrap_angle_rad(angle):
-    """Works on floats and numpy arrays."""
     return (angle + math.pi) % (2 * math.pi) - math.pi
 
 def _vec(v) -> np.ndarray:
@@ -30,7 +29,6 @@ def _unit(name: str) -> str:
     return "m/s^2"
 
 def _stats(err) -> dict:
-    """Statistics of a signed error array (non-finite values are dropped)."""
     err = np.asarray(err, dtype=float)
     err = err[np.isfinite(err)]
     if err.size == 0:
@@ -74,7 +72,7 @@ def evaluate_frames(gt_frames: Dict[str, Ego3DState], pred_frames: Dict[str, Ego
                     rpe_delta_frames: int = hp.DEFAULT_RPE_DELTA_FRAMES,
                     moving_threshold: float = hp.MOVING_SPEED_THRESHOLD,
                     stationary_threshold: float = hp.STATIONARY_SPEED_THRESHOLD) -> dict:
-    ids = [f for f in gt_frames if f in pred_frames]   # insertion (time) order
+    ids = [f for f in gt_frames if f in pred_frames]
 
     def col(frames, name):
         return np.array([getattr(frames[f], name) for f in ids], dtype=float)
@@ -103,12 +101,10 @@ def evaluate_frames(gt_frames: Dict[str, Ego3DState], pred_frames: Dict[str, Ego
     agg["position_longitudinal"] = _stats(c * dp[:, 0] + s * dp[:, 1])
     agg["position_lateral"] = _stats(-s * dp[:, 0] + c * dp[:, 1])   # positive = right (CARLA)
 
-    # ---- attitude ----
     ang = np.stack([wrap_angle_rad(col(pred_frames, n) - col(gt_frames, n)) for n in hp.ANGLE_FIELDS], axis=1)
     agg["attitude_3d"] = _stats(np.degrees(np.linalg.norm(ang, axis=1)))
     agg["tilt"] = _stats(np.degrees(np.linalg.norm(ang[:, :2], axis=1)))
 
-    # ---- velocity / rates / acceleration ----
     agg["velocity_world_vec"] = _stats(diff_norm(("vx_world", "vy_world", "vz_world")))
     agg["velocity_body_vec"] = _stats(diff_norm(("vx_body", "vy_body", "vz_body")))
     agg["angular_rate_vec"] = _stats(diff_norm(hp.RATE_FIELDS))
@@ -125,7 +121,6 @@ def evaluate_frames(gt_frames: Dict[str, Ego3DState], pred_frames: Dict[str, Ego
     course = wrap_angle_rad(np.arctan2(evy, evx) - np.arctan2(gvy, gvx))
     agg["course_angle"] = _stats(np.degrees(course[both_moving]))
 
-    # ---- trajectory level: drift and relative pose error ----
     ok = (np.all(np.isfinite(gp), axis=1) & np.all(np.isfinite(ep), axis=1)
           & np.isfinite(gyaw) & np.isfinite(eyaw))
     gp_, ep_, gy_, ey_ = gp[ok], ep[ok], gyaw[ok], eyaw[ok]
@@ -162,6 +157,7 @@ def _row(label: str, unit: str, m: dict) -> str:
             f"{m['median_abs']:>10.3f}{m['rmse']:>10.3f}{m['p95_abs']:>10.3f}{m['max_abs']:>10.3f}")
 
 def print_results(metrics: dict) -> None:
+    """This function was written by an LLM"""
     cfg = metrics["config"]
     header = (f"{'':<24}{'unit':>6}{'n':>7}{'bias':>10}{'std':>10}{'MAE':>10}"
               f"{'median':>10}{'RMSE':>10}{'p95':>10}{'max':>10}")
