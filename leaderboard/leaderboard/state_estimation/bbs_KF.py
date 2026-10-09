@@ -232,7 +232,7 @@ def _vertical_overlap(z_a: float, h_a: float, z_b: float, h_b: float) -> bool:
 def time_to_road_departure(carla_map: carla.Map, ego: Ego3DState, dims: np.array, dt: float = hp.ROAD_EXIT_STEP_S,
                            max_time: float = hp.ROAD_EXIT_LOOKAHEAD_S) -> float:
     c, s = math.cos(ego.yaw), math.sin(ego.yaw)
-    ax_w = c * ego.long_accel - s * ego.lat_accel      # check the sign of lat_accel in your EKF
+    ax_w = c * ego.long_accel - s * ego.lat_accel   
     ay_w = s * ego.long_accel + c * ego.lat_accel
     x = np.array([ego.x, ego.y, ego.vx_world, ego.vy_world, ax_w, ay_w,
                   ego.yaw, ego.yaw_rate, dims[0], dims[1], ego.z, dims[2]])
@@ -246,13 +246,13 @@ def time_to_road_departure(carla_map: carla.Map, ego: Ego3DState, dims: np.array
         px, py, pz = x[0], x[1], x[10]
         wp = carla_map.get_waypoint(carla.Location(x=px, y=py, z=pz), project_to_road=False, lane_type=carla.LaneType.Driving)
         if wp is None:
-            return -1.0 if i == 0 else t
+            return 0
 
         wp_loc = wp.transform.location
         right = wp.transform.get_right_vector()
         lateral = (px - wp_loc.x) * right.x + (py - wp_loc.y) * right.y
         if abs(lateral) + dims[1] / 2 > wp.lane_width / 2.0:
-            return -1.0 if i == 0 else t
+            return 0
 
         x[10] = wp_loc.z
 
@@ -399,12 +399,17 @@ def compute_ttcs(tracked, state: CalculatedState, carla_map: carla.Map, half_len
     else:
         ttcs = np.array([])
 
-    #road_exit_ttc = time_to_road_departure(carla_map, state.ego_state,
-    #                                       np.array([half_length * 2, half_width * 2, half_height * 2]))
-    #ttcs = np.append(ttcs, road_exit_ttc)
+    road_exit_ttc = time_to_road_departure(carla_map, state.ego_state,
+                                           np.array([half_length * 2, half_width * 2, half_height * 2]))
     if len(ttcs) == 0:
         return ttcs, float('inf')
-    return ttcs, float(np.min(ttcs))
+    if road_exit_ttc == float('inf'):
+        return ttcs, float(np.min(ttcs)), None
+    ttcs = np.append(ttcs, road_exit_ttc)
+    return ttcs, float(np.min(ttcs)), (trackedbb( px=0, py=0, moveable=False,
+                    vx=0.0, vy=0.0, speed=0.0, acceleration=0.0, ax=0.0, ay=0.0,
+                    yaw=0, yaw_rate=0.0, len=0, wid= 0,
+                    z=0, height=0, score= 0, pos_history=[], slip_angle_deg=0.0))
 
 """def get_lidar_radar_info(state: CalculatedState, lidar_stream, radar_streams, cameras, step,
                          radar_transforms, half_length, half_width, tracker, carla_map: carla.Map,
@@ -522,8 +527,10 @@ class BBsWorker(threading.Thread):
         if self._cur_state is None:
             return None
         tracked = self.tracker.predict_to(self._cur_step) + self._static   # extrapolated to NOW
-        ttcs, min_ttc = compute_ttcs(tracked, self._cur_state, self.carla_map,
+        ttcs, min_ttc, new_obj = compute_ttcs(tracked, self._cur_state, self.carla_map,
                                      self.half_length, self.half_width, self.half_height)
+        if new_obj is not None:
+            tracked.append(new_obj)
         return tracked, ttcs, min_ttc, self._pts
 
     def run(self):

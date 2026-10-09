@@ -437,8 +437,7 @@ class UKFTrackBB2D:
             vx, vy, ax, ay = float(x[2]), float(x[3]), float(x[4]), float(x[5])
             speed = raw_speed
             acceleration = (vx * ax + vy * ay) / speed
-        slip = 0.0 if raw_speed < 0.5 * hp.YAW_ALIGN_MIN_SPEED else \
-            math.degrees(normalize_angle(math.atan2(x[3], x[2]) - yaw))
+        slip = 0.0 if raw_speed < 0.5 * hp.YAW_ALIGN_MIN_SPEED else math.degrees(normalize_angle(math.atan2(x[3], x[2]) - yaw))
         last = self.bbs[-1]
         return trackedbb(px=float(x[0]), py=float(x[1]), moveable=True,
                          vx=vx, vy=vy, speed=speed, acceleration=acceleration, ax=ax, ay=ay,

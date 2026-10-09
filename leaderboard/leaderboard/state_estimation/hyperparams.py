@@ -142,8 +142,8 @@ CAM_RIG = {
     "cam_04": (-0.8, -0.3, -0.18, 180.0),
     "cam_05": (-0.8, 0.3, -0.18, 180.0),
 }
-SRC_W, SRC_H, FOV_DEG = 1408, 376, 103.744808   # raw CARLA camera
-OUT_W, OUT_H = 704, 192                          # after cv2.resize in SensorDataParser
+SRC_W, SRC_H, FOV_DEG = 1408, 376, 103.744808  
+OUT_W, OUT_H = 704, 192                          
 
 R_CAM_TO_LIDAR = np.array([[0, 0, 1],
                             [-1, 0, 0],

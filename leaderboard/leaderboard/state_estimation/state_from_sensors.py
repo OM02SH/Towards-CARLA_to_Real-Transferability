@@ -8,7 +8,6 @@ from leaderboard.state_estimation.real_test_BBs import OnlineEvaluator
 from leaderboard.state_estimation.traffic_light_worker import TrafficLightWorker
 from leaderboard.state_estimation.real_test_ego import EgoStateOnlineEvaluator
 import leaderboard.state_estimation.hyperparams as hp
-from leaderboard.state_estimation.ekf_tuning import SensorRecorder
 
 Gravity = 9.81
 min_valid_range_m = 0.5
@@ -54,7 +53,6 @@ class CarlaStateEstimatorEngine:
         self.tlw.start()
         self.tracker.start()
         self._last_result = None
-        #self.rec = SensorRecorder(self.map.transform_to_geolocation(carla.Location(0,0,0)))
         self.geo_ref = self.map.transform_to_geolocation(carla.Location(0,0,0))
 
     def get_rest_info(self, state : CalculatedState):
