@@ -11,16 +11,18 @@ Tested with CARLA 0.9.15.
 ## Repository layout
 
 ```
-final/
+/.
 ├── Dockerfile, requirements.txt, run_full.sh   # container + full-run script
 ├── leaderboard/                                # Bench2Drive leaderboard fork
 │   ├── run_leaderboard.sh, results.json
 │   └── leaderboard/state_estimation/           # <- this stack (see below)
 ├── scenario_runner/                            # CARLA scenario runner
 ├── pcdet/, tools/                              # OpenPCDet (detector training / inference)
-├── prepare_carlaocc.py                         # CarlaOcc -> OpenPCDet infos (LiDAR)
-├── prepare_carlaocc_bevfusion.py               # adds camera calibration for BEVFusion
-├── add_parked_car_boxes.py                     # recovers parked-vehicle boxes (Thesis Sec. 5.1.5)
+├── prepare_dataset/
+│   ├── prepare_carlaocc.py                     # CarlaOcc -> OpenPCDet infos (LiDAR)
+│   ├── prepare_carlaocc_bevfusion.py           # adds camera calibration for BEVFusion
+│   ├── add_parked_car_boxes.py                 # recovers parked-vehicle boxes (Thesis Sec. 5.1.5)
+│   └── carlaocc/                               # The Carlaocc dataset in Openpcdet style      
 ├── aggregate_routes.py, agg/                   # pools per-route results (CIs, tables)
 └── out/                                        # run outputs
 ```
@@ -63,7 +65,7 @@ docker run -d --name test_run --gpus all --net=host \
 - `CARLA_PythonAPI` is mounted read-only; it must match the CARLA server version.
 - Follow progress with `docker logs -f test_run`; stop with `docker stop test_run`.
 
-You must start carla and make it run on host 200 first.
+You must start carla and make it run on host 2000 first.
 
 ## Outputs
 
