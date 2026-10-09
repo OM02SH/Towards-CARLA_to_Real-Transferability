@@ -22,7 +22,7 @@ final/
 ├── prepare_carlaocc_bevfusion.py               # adds camera calibration for BEVFusion
 ├── add_parked_car_boxes.py                     # recovers parked-vehicle boxes (Thesis Sec. 5.1.5)
 ├── aggregate_routes.py, agg/                   # pools per-route results (CIs, tables)
-└── out/, carla_out/                            # run outputs   TODO: confirm
+└── out/                                        # run outputs
 ```
 
 ## `state_estimation/` files
