@@ -1,4 +1,4 @@
-# Sensor-based state estimation for Bench2Drive (`state_estimation/`)
+# Sensor-based State estimation and Perception in Carla
 
 Perception and state-estimation stack from the bachelor's thesis
 *Towards CARLA-to-Real Transferability* (Omar Shaat, TUM, 2026). It runs inside
